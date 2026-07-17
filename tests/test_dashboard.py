@@ -46,6 +46,7 @@ class FakeServices:
         self.fundamentals = MagicMock()
         self.events = MagicMock()
         self.options = MagicMock()
+        self.crypto = MagicMock()
         self.screener_cache = None  # bypass disk caching in tests
         self.cache = None  # bypass disk caching in tests
         self.form4_cache = None  # bypass disk caching in tests
@@ -62,6 +63,34 @@ def api(services):
     app = create_app("Test Suite test@example.com", services=services)
     app.config["TESTING"] = True
     return app.test_client()
+
+
+def test_crypto_endpoint_reports_source_and_rows(api, services):
+    services.crypto.get_markets.return_value = (
+        "coingecko",
+        [{"rank": 1, "symbol": "BTC", "name": "Bitcoin", "price": 64132,
+          "change_pct_24h": -0.01, "market_cap": 1286366720245,
+          "volume_24h": 28499852020, "high_24h": 64286, "low_24h": 62528}],
+    )
+    data = api.get("/api/crypto?limit=10").get_json()
+    assert data["source"] == "coingecko"
+    assert data["rows"][0]["symbol"] == "BTC"
+    services.crypto.get_markets.assert_called_once_with(limit=10)
+
+
+def test_regulatory_endpoint_wraps_federal_register(api, monkeypatch):
+    from edgar13f import regulatory
+
+    monkeypatch.setattr(
+        regulatory, "get_sec_documents",
+        lambda limit=20: [{"title": "A rule", "type": "Rule",
+                           "document_number": "2026-1", "html_url": "https://x",
+                           "publication_date": "2026-07-17"}],
+    )
+    data = api.get("/api/regulatory").get_json()
+    assert data == [{"title": "A rule", "type": "Rule",
+                     "document_number": "2026-1", "html_url": "https://x",
+                     "publication_date": "2026-07-17"}]
 
 
 def test_index_serves_terminal_html(api):
@@ -249,7 +278,10 @@ def test_markets_endpoint_groups_by_section(api, services):
     }
     data = api.get("/api/markets").get_json()
     sections = {s["section"]: s["rows"] for s in data}
-    assert "AMERICAS" in sections and "CRYPTO" in sections
+    assert "AMERICAS" in sections
+    # Crypto deliberately is NOT part of the stocks view - it lives on the
+    # MKTS screen's CRYPTO toggle, served by /api/crypto (CoinGecko).
+    assert "CRYPTO" not in sections
     assert sections["AMERICAS"][0]["label"] == "S&P 500"
 
 

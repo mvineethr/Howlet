@@ -111,6 +111,14 @@
   }
   .lay-btn { color: var(--dim); cursor: pointer; padding: 2px 6px; border: 1px solid var(--border); }
   .lay-btn:hover { color: var(--amber); background: #161616; }
+  #mkts-toggle { display: flex; gap: 4px; align-items: center; padding: 8px 8px 0; }
+  .mkts-mode {
+    color: var(--dim); cursor: pointer; padding: 3px 14px;
+    border: 1px solid var(--border); letter-spacing: 1px;
+  }
+  .mkts-mode:hover { background: #161616; }
+  .mkts-mode.on { color: var(--amber); border-color: var(--amber-dim); background: #161616; }
+  #mkts-source { margin-left: 8px; }
   #add-block {
     border: 1px dashed var(--border); color: var(--dim);
     display: flex; flex-direction: column; gap: 8px;
@@ -319,7 +327,7 @@
 
 <div id="topbar">
   <span id="brand">EDGAR13F <span class="live">&#9679;</span> TERMINAL</span>
-  <input id="cmd" placeholder="AAPL DES &middot; buffett PORT &middot; EQS &middot; AAPL OPT &middot; ECO &middot; PF &middot; HELP" autocomplete="off">
+  <input id="cmd" autocomplete="off">
   <button id="go">GO &lt;GO&gt;</button>
   <span id="status"></span>
   <span id="clock"></span>
@@ -470,6 +478,10 @@
       <div class="panel-h">FED CALENDAR <span class="sub">FOMC statements &amp; speeches (federalreserve.gov)</span></div>
       <div class="panel-b" id="eco-fed-body"><div class="loading">Loading Fed feed...</div></div>
     </div>
+    <div class="panel" style="grid-column: 1 / -1">
+      <div class="panel-h">SEC RULEMAKING <span class="sub">rules, proposed rules &amp; notices (federalregister.gov, official)</span></div>
+      <div class="panel-b" id="eco-reg-body"><div class="loading">Loading Federal Register...</div></div>
+    </div>
   </div>
 </div>
 
@@ -496,6 +508,11 @@
 
 <!-- ==================== MKTS screen ==================== -->
 <div class="screen" id="screen-mkts">
+  <div id="mkts-toggle">
+    <span class="mkts-mode" data-mktsmode="stocks">STOCKS</span>
+    <span class="mkts-mode" data-mktsmode="crypto">CRYPTO</span>
+    <span class="sub" id="mkts-source"></span>
+  </div>
   <div id="mkts-grid"><div class="loading">Loading world markets...</div></div>
 </div>
 
@@ -673,7 +690,8 @@
        <span class="cmd-ex">edgar13f mcp</span> - see the README for Claude Code / Claude Desktop setup.</p>
     <h2>SOURCES</h2>
     <p>SEC EDGAR (13F holdings, XBRL fundamentals) &middot; OpenFIGI (CUSIP&rarr;ticker) &middot;
-       Yahoo Finance (quotes/charts) &middot; Yahoo/CNBC/MarketWatch/SEC RSS (news). All free, no API keys.</p>
+       Yahoo Finance (quotes/charts) &middot; Yahoo/CNBC/MarketWatch/SEC RSS (news) &middot;
+       CoinGecko/Coinpaprika (crypto market caps) &middot; Federal Register (SEC rulemaking). All free, no API keys.</p>
   </div>
 </div>
 
@@ -688,7 +706,7 @@
   <span class="fkey" data-cmd="ECO"><b>F7</b> ECO</span>
   <span class="fkey" data-cmd="PF"><b>F8</b> PF</span>
   <span class="fkey" data-cmd="HELP"><b>F9</b> HELP</span>
-  <span class="fkey dim">| SOURCES: SEC EDGAR &middot; YAHOO &middot; OPENFIGI &middot; CNBC &middot; MARKETWATCH &middot; GOOGLE NEWS &middot; SEEKING ALPHA &middot; TREASURY &middot; BLS &middot; FED &middot; FRED (OPT)</span>
+  <span class="fkey dim">| SOURCES: SEC EDGAR &middot; YAHOO &middot; OPENFIGI &middot; COINGECKO &middot; FED REGISTER &middot; CNBC &middot; MARKETWATCH &middot; GOOGLE NEWS &middot; SEEKING ALPHA &middot; TREASURY &middot; BLS &middot; FED &middot; FRED (OPT)</span>
 </div>
 <div id="footer">
   13F data reports quarter-end long US equity positions with up to a ~45 day lag; excludes shorts, most options and cash.
@@ -1200,7 +1218,19 @@ async function loadSecNews(symbol) {
 }
 
 /* ---------- MKTS screen ---------- */
+/* STOCKS | CRYPTO toggle - the two live in separate spaces, not mixed.
+   The chosen side is remembered across sessions. */
+const MKTS_MODE_KEY = "edgar13f_mkts_mode";
+function getMktsMode() {
+  return localStorage.getItem(MKTS_MODE_KEY) === "crypto" ? "crypto" : "stocks";
+}
+
 async function loadMarkets() {
+  const mode = getMktsMode();
+  document.querySelectorAll(".mkts-mode").forEach(el =>
+    el.classList.toggle("on", el.dataset.mktsmode === mode));
+  $("mkts-source").textContent = "";
+  if (mode === "crypto") { await loadCryptoMarkets(); return; }
   const grid = $("mkts-grid");
   grid.innerHTML = '<div class="loading">Loading world markets (30+ instruments)...</div>';
   try {
@@ -1218,6 +1248,38 @@ async function loadMarkets() {
           </tr>`).join("")}
         </tbody></table></div>
       </div>`).join("");
+  } catch (e) {
+    grid.innerHTML = `<div class="loading">ERROR: ${esc(e.message)}</div>`;
+  }
+}
+
+async function loadCryptoMarkets() {
+  const grid = $("mkts-grid");
+  grid.innerHTML = '<div class="loading">Loading crypto market caps...</div>';
+  try {
+    const data = await getJSON("/api/crypto?limit=50");
+    if (!data.rows.length) {
+      grid.innerHTML = '<div class="loading">Crypto data unavailable right now (CoinGecko and Coinpaprika both unreachable).</div>';
+      return;
+    }
+    $("mkts-source").textContent = "source: " + data.source;
+    grid.innerHTML = `
+      <div class="panel" style="grid-column: 1 / -1">
+        <div class="panel-h">CRYPTO <span class="sub">top ${data.rows.length} by market cap &middot; 24h</span></div>
+        <div class="panel-b" style="max-height: calc(100vh - 210px)"><table>
+          <thead><tr><th>#</th><th>COIN</th><th class="num">PRICE</th><th class="num">24H %</th>
+          <th class="num">MKT CAP</th><th class="num">24H VOLUME</th><th class="num">24H LOW/HIGH</th></tr></thead>
+          <tbody>${data.rows.map(r => `<tr>
+            <td class="dim">${r.rank ?? "--"}</td>
+            <td>${esc(r.symbol)} <span class="dim">${esc(r.name || "")}</span></td>
+            <td class="num">${r.price === null ? "--" : "$" + fmtNum(r.price, r.price < 1 ? 4 : 2)}</td>
+            <td class="num ${pctCls(r.change_pct_24h)}">${r.change_pct_24h === null ? "--" : signed(r.change_pct_24h) + "%"}</td>
+            <td class="num">${fmtMoneyK(r.market_cap)}</td>
+            <td class="num">${fmtMoneyK(r.volume_24h)}</td>
+            <td class="num dim">${r.low_24h === null ? "--" : fmtNum(r.low_24h, r.low_24h < 1 ? 4 : 2) + " / " + fmtNum(r.high_24h, r.high_24h < 1 ? 4 : 2)}</td>
+          </tr>`).join("")}</tbody>
+        </table></div>
+      </div>`;
   } catch (e) {
     grid.innerHTML = `<div class="loading">ERROR: ${esc(e.message)}</div>`;
   }
@@ -1863,6 +1925,20 @@ async function loadEco() {
   } catch (e) {
     $("eco-fed-body").innerHTML = `<div class="loading">ERROR: ${esc(e.message)}</div>`;
   }
+  try {
+    const docs = await getJSON("/api/regulatory?limit=15");
+    // publication_date is date-only; passing it as `published` would get
+    // parsed as UTC midnight and rendered a day early in US timezones,
+    // so it rides along in the source label verbatim instead.
+    $("eco-reg-body").innerHTML = docs.length
+      ? newsItemsHtml(docs.map(d => ({
+          title: d.title, link: d.html_url,
+          source: (d.type || "Document") + " · " + (d.publication_date || ""),
+        })))
+      : '<div class="loading">Federal Register unavailable right now.</div>';
+  } catch (e) {
+    $("eco-reg-body").innerHTML = `<div class="loading">ERROR: ${esc(e.message)}</div>`;
+  }
 }
 
 /* ---------- PF (personal portfolio risk) ---------- */
@@ -1982,6 +2058,13 @@ async function boot() {
       saveLayout(layout);
       wtall.closest(".widget").classList.toggle("tall", !!w.tall);
       wtall.classList.toggle("on", !!w.tall);
+      return;
+    }
+    // MKTS screen STOCKS/CRYPTO toggle.
+    const mktsMode = e.target.closest("[data-mktsmode]");
+    if (mktsMode) {
+      localStorage.setItem(MKTS_MODE_KEY, mktsMode.dataset.mktsmode);
+      loadMarkets();
       return;
     }
     // Named layout snapshots (SAVE / LOAD / DEL in the tab bar).

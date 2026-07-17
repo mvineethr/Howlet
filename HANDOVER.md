@@ -6,6 +6,49 @@ Newest session first.
 
 ---
 
+# Session 2026-07-17 (part 3): crypto screen, Federal Register, cleaner topbar
+
+## What was asked
+
+From the API-list review: wire in Federal Register (candidate #3), and
+a crypto screen "along with stocks but under a toggle - not in the same
+space". Also remove the example-hint placeholder from the command box.
+
+## What was built
+
+- **`crypto.py`**: CoinGecko keyless `/coins/markets` (probed live
+  first) with automatic Coinpaprika fallback, normalized rows, 60s
+  in-memory TTL cache, degrades to ("", []). `crypto_view` +
+  `/api/crypto` + MCP `get_crypto_markets`.
+- **MKTS STOCKS/CRYPTO toggle**: two modes in separate spaces, choice
+  remembered (`edgar13f_mkts_mode`). The old 5-symbol CRYPTO section
+  was removed from `MARKET_SECTIONS` (and its test updated to assert
+  it's ABSENT). Crypto side: top-50 table w/ price, 24h %, mkt cap,
+  volume, 24h range, "source: coingecko|coinpaprika" label.
+- **`regulatory.py`**: Federal Register API (keyless, official) SEC
+  documents; `regulatory_view` + `/api/regulatory` + MCP
+  `get_sec_rulemaking` + SEC RULEMAKING panel on ECO. MCP now 21 tools.
+- **Command box placeholder removed** per user.
+- Tests 132 (fixtures trimmed from live payloads captured 2026-07-17).
+
+## Live-found bug #7: date-only strings render a day early
+
+Federal Register `publication_date` ("2026-07-17") fed to
+`new Date(...).toLocaleString()` renders as "7/16/2026, 7:00:00 PM" in
+US timezones (parsed as UTC midnight). Fixed by passing the date string
+through verbatim in the source label. Gotcha added to CLAUDE.md.
+
+## Verified live (browser)
+
+Stocks side has NO crypto section; CRYPTO toggle renders top-50 with
+BTC $64,123 / $1.29T cap (cross-checked against the Yahoo tape's
+BITCOIN 64,120); ECO shows same-day Federal Register notices (first
+item matched the raw API probe). NOTE: Python edits need a dashboard
+server restart - only dashboard.html is re-read per request (this
+nearly passed as "verified" against stale code).
+
+---
+
 # Session 2026-07-17 (part 2): widget resize + named layout snapshots
 
 ## What was asked

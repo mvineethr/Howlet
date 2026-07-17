@@ -115,6 +115,16 @@ def create_app(
     def markets():
         return jsonify(views.markets_view(svc))
 
+    @app.get("/api/crypto")
+    def crypto():
+        limit = int(request.args.get("limit", 50))
+        return jsonify(views.crypto_view(svc, limit=limit))
+
+    @app.get("/api/regulatory")
+    def regulatory():
+        limit = int(request.args.get("limit", 20))
+        return jsonify(views.regulatory_view(limit=limit))
+
     @app.get("/api/news")
     def news():
         limit = int(request.args.get("limit", 30))

@@ -23,6 +23,7 @@ from .cache import (
 )
 from .client import EdgarClient
 from .consensus import build_consensus_rows, fetch_latest_portfolios
+from .crypto import CryptoClient
 from .diff import STATUS_ORDER, diff_holdings
 from .events import CorporateEventsClient, get_fed_events, get_shareholder_meetings
 from .form4 import TRANSACTION_CODE_LABELS, list_form4_filings
@@ -85,11 +86,10 @@ MARKET_SECTIONS: list[tuple[str, list[tuple[str, str]]]] = [
         ("GC=F", "GOLD"), ("SI=F", "SILVER"), ("HG=F", "COPPER"),
         ("ZW=F", "WHEAT"), ("^TNX", "US 10Y YLD"), ("^FVX", "US 5Y YLD"),
     ]),
-    ("CRYPTO", [
-        ("BTC-USD", "BITCOIN"), ("ETH-USD", "ETHEREUM"), ("SOL-USD", "SOLANA"),
-        ("XRP-USD", "XRP"), ("DOGE-USD", "DOGECOIN"),
-    ]),
 ]
+# (Crypto is deliberately NOT a section here: the MKTS screen has a
+# STOCKS/CRYPTO toggle and crypto_view below serves the CRYPTO side with
+# real market-cap data instead of a handful of hardcoded Yahoo symbols.)
 
 
 class Services:
@@ -111,6 +111,7 @@ class Services:
         self.events = CorporateEventsClient(auth=yahoo_auth)
         self.options = OptionsClient(auth=yahoo_auth)
         self.screener_cache = ScreenerCache(cache_dir=cache_dir)
+        self.crypto = CryptoClient()
 
 
 def resolve_cik(identifier: str) -> str:
@@ -651,6 +652,22 @@ def markets_view(svc: Services) -> list[dict]:
             )
         sections.append({"section": section, "rows": rows})
     return sections
+
+
+def crypto_view(svc: Services, limit: int = 50) -> dict:
+    """The CRYPTO side of the MKTS screen: top coins by market cap from
+    CoinGecko's keyless tier (Coinpaprika fallback). Rows may be empty
+    if both providers are unreachable - the UI shows "unavailable"."""
+    source, rows = svc.crypto.get_markets(limit=limit)
+    return {"source": source, "rows": rows}
+
+
+def regulatory_view(limit: int = 20) -> list[dict]:
+    """Newest SEC rulemaking/notices from the Federal Register (keyless
+    official source). Empty list when the API is unreachable."""
+    from . import regulatory
+
+    return regulatory.get_sec_documents(limit=limit)
 
 
 def facts_view(svc: Services, symbol: str, years: int = 5) -> dict:

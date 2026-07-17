@@ -141,9 +141,9 @@ Commands are `SECURITY FUNCTION`, like the real thing:
 | `NEWS` | TOP | dedicated news tab: market wire (Yahoo, CNBC, CNBC Earnings, MarketWatch, Google News, Seeking Alpha, SEC), Fed & policy feed, earnings/analysis |
 | `MY` | — | your personalize tab: watchlist quotes, news scoped to only your names, and upcoming earnings/analyst view/proxy filings for them |
 | `EQS` | EQS | equity screener (P/E, market cap, revenue growth, net margin) over a curated large-cap universe |
-| `ECO` | ECO/FED | Treasury yield curve, CPI/unemployment/payrolls (BLS), FRED macro series (optional free key), FOMC statements & Fed speeches |
+| `ECO` | ECO/FED | Treasury yield curve, CPI/unemployment/payrolls (BLS), FRED macro series (optional free key), FOMC statements & Fed speeches, SEC rulemaking from the Federal Register |
 | `PF` | PORT (risk) | your personal portfolio: volatility, max drawdown, Sharpe ratio per position and overall |
-| `MKTS` | WEI/FXC | world markets: global indices, FX, commodities, rates, crypto |
+| `MKTS` | WEI/FXC | world markets with a STOCKS/CRYPTO toggle: global indices, FX, commodities, rates on one side; top-50 crypto by market cap (CoinGecko, keyless) on the other |
 | `AAPL OPT` | OMON | options chain (experimental: relies on an unofficial Yahoo endpoint) |
 | `HELP` | HELP | the command cheat sheet |
 
@@ -204,11 +204,15 @@ Not everything here has the same reliability. Know what you're standing on:
 
 - **Official & keyless (rock solid):** SEC EDGAR (13F, XBRL fundamentals,
   proxy filings), Treasury.gov (yield curve), Federal Reserve (RSS),
-  BLS (25 queries/day/IP without signup).
+  BLS (25 queries/day/IP without signup), Federal Register (SEC
+  rulemaking on the ECO screen).
 - **Unofficial & keyless (can break silently):** Yahoo's chart endpoint
   (quotes/history) and especially its crumb-authed endpoints (options
   chains, earnings dates, analyst views) — Yahoo has changed this auth
   before. Everything degrades to "unavailable" rather than crashing.
+  CoinGecko's keyless tier (crypto market caps) sits here too — rate
+  limits drift, so Coinpaprika is an automatic fallback and the CRYPTO
+  view shows "unavailable" if both are down.
 - **Optional key:** set `FRED_API_KEY` (free signup at
   https://fred.stlouisfed.org/docs/api/api_key.html) and the ECO screen +
   `get_macro_snapshot` MCP tool automatically add Fed funds rate, GDP,

@@ -137,6 +137,20 @@ def build_server(user_agent: str):
         return views.markets_view(svc)
 
     @server.tool()
+    def get_crypto_markets(limit: int = 50) -> dict:
+        """Top cryptocurrencies by market cap: price, 24h change, market
+        cap, volume (CoinGecko keyless tier, Coinpaprika fallback -
+        `source` says which one answered; rows empty if both are down)."""
+        return views.crypto_view(svc, limit=limit)
+
+    @server.tool()
+    def get_sec_rulemaking(limit: int = 20) -> list[dict]:
+        """Newest SEC rules, proposed rules, and notices from the
+        Federal Register (the US government's official daily journal) -
+        exchange rule changes, ETF approvals, market-structure rules."""
+        return views.regulatory_view(limit=limit)
+
+    @server.tool()
     def get_corporate_events(symbol: str) -> dict:
         """Next earnings date, analyst buy/hold/sell recommendation mix
         (Yahoo, unofficial - degrades to null if unavailable), and recent

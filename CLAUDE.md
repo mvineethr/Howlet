@@ -5,7 +5,7 @@
 A free, no-API-key, open-source Bloomberg-style terminal built on SEC
 EDGAR 13F data ("what is Warren Buffett buying"), grown into a full
 market terminal: web dashboard (`edgar13f dashboard`), CLI, Python
-library, and an MCP server (`edgar13f mcp`, 19 tools) so any AI agent
+library, and an MCP server (`edgar13f mcp`, 21 tools) so any AI agent
 can drive it. Everything is verified live against the real APIs, not
 just offline mocks - that habit has caught a real bug almost every
 session (see Gotchas).
@@ -34,10 +34,12 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 | `events.py` | Earnings date + analyst mix (Yahoo, crumb-authed), DEF 14A proxies (EDGAR), Fed RSS |
 | `options.py` | Options chains (Yahoo, crumb-authed) - EXPERIMENTAL, de-emphasized per user |
 | `macro.py` | Treasury yield curve (keyless), BLS unregistered tier, FRED (optional key) |
+| `crypto.py` | Top coins by market cap: CoinGecko keyless tier, Coinpaprika fallback, 60s TTL cache; degrades to empty |
+| `regulatory.py` | SEC rulemaking/notices from the Federal Register API (keyless, official); degrades to empty |
 | `yahoo_auth.py` | Yahoo cookie+crumb workaround for walled endpoints; consumers must degrade, never raise |
 | `views.py` | Shared JSON view layer - Flask endpoints AND MCP tools both wrap these |
 | `dashboard.py` | Flask wiring only; UI lives in `dashboard.html` (single file, vanilla JS) |
-| `mcp_server.py` | FastMCP stdio server, 19 tools (optional dep: `pip install "edgar13f[mcp]"`) |
+| `mcp_server.py` | FastMCP stdio server, 21 tools (optional dep: `pip install "edgar13f[mcp]"`) |
 
 ## Hard rules
 
@@ -105,6 +107,9 @@ doc. Tests: `pytest tests/` - all offline/mocked.
   parsed alongside the non-derivative rows.
 - **TradingView-style embeds fail silently on a wrong script URL** - no
   console error, no iframe. Verify third-party URLs with curl first.
+- **Date-only strings (e.g. Federal Register `publication_date`) must
+  not go through `new Date(...)` display formatting** - JS parses them
+  as UTC midnight, so US timezones render the previous day.
 - Docker Desktop here sometimes evicts freshly built images; rebuild.
 
 ## Caches (all under `~/.edgar13f/`)
@@ -123,12 +128,15 @@ watchlists with scoped news/events, all in localStorage,
 "RESTORE CLASSIC LAYOUT" one-click preset), manager portfolios w/ live
 quotes, Q/Q changes, consensus, holders (HDS), fundamentals (FA), DES
 screen with vendored KLineChart (unlimited indicators + drawing) and a
-BACK button, studies incl. ORB, NEWS tab (7 feeds), MY tab, MKTS, EQS
-screener, ECO (Treasury/BLS/FRED/Fed), PF risk, options (experimental),
+BACK button, studies incl. ORB, NEWS tab (7 feeds), MY tab, MKTS with a
+STOCKS/CRYPTO toggle (crypto = CoinGecko top-50 by market cap,
+Coinpaprika fallback - separate spaces, remembered choice), EQS
+screener, ECO (Treasury/BLS/FRED/Fed + SEC RULEMAKING from the Federal
+Register), PF risk, options (experimental),
 **Form 4 insider transactions** (CLI `insiders`, `/api/insiders`, MCP
 tool, dashboard block), **13F position history** (CLI `history`,
 `/api/position-history`, MCP tool, dashboard block w/ value bars), MCP
-server with 19 tools, GitHub Actions CI, Docker. Presets: 14 tracked
+server with 21 tools, GitHub Actions CI, Docker. Presets: 14 tracked
 managers (Buffett, Burry, Ackman, Icahn, Tepper, Klarman, Loeb, Dalio,
 Druckenmiller, Marks, Li Lu, Einhorn/DME, Fundsmith, Tiger Global) -
 every CIK verified live against a current 13F-HR.
@@ -145,13 +153,10 @@ error clearly, never exercised).
    initial commit are all done.
 2. **Form 4 dashboard depth** - a watchlist-scoped insiders block, or
    insider-buy screening across the tracked universe.
-3. **Candidate new data sources** (from the user's public-API lists,
-   2026-07-17; all fit the no-required-key rule, none wired in yet):
-   CoinGecko or Coinpaprika (keyless crypto market caps/volumes - a
-   real CRYPTO screen instead of 5 hardcoded Yahoo symbols),
-   Frankfurter (keyless ECB FX time series - cross-rate matrix widget),
-   Federal Register API (keyless - new SEC rules/notices for the ECO
-   tab). Probe live before building (rate limits drift).
+3. **Frankfurter** (keyless ECB FX time series - cross-rate matrix
+   widget): the one remaining candidate from the user's public-API
+   lists (2026-07-17). CoinGecko and Federal Register are wired in;
+   probe live before building (rate limits drift).
 
 ## Working rules
 

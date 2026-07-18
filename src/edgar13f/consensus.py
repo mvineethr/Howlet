@@ -17,7 +17,6 @@ from typing import Optional
 from .cache import FilingCache, cached_information_table
 from .client import EdgarClient
 from .diff import _aggregate_by_cusip
-from .models import Holding
 
 
 @dataclass

@@ -111,6 +111,16 @@
   }
   .lay-btn { color: var(--dim); cursor: pointer; padding: 2px 6px; border: 1px solid var(--border); }
   .lay-btn:hover { color: var(--amber); background: #161616; }
+  #alerts { cursor: pointer; color: var(--dim); padding: 0 6px; }
+  #alerts.hot { color: var(--amber); }
+  #alerts .cnt { background: var(--down); color: #000; font-weight: bold; padding: 0 5px; margin-left: 2px; }
+  #alerts-panel {
+    display: none; position: absolute; right: 8px; top: 34px; z-index: 60;
+    background: #0d0d0d; border: 1px solid var(--amber-dim); padding: 8px;
+    max-width: 440px; box-shadow: 0 4px 18px #000;
+  }
+  #alerts-panel.open { display: block; }
+  #alerts-panel .news-item { padding: 3px 0; }
   #mkts-toggle { display: flex; gap: 4px; align-items: center; padding: 8px 8px 0; }
   .mkts-mode {
     color: var(--dim); cursor: pointer; padding: 3px 14px;
@@ -329,9 +339,11 @@
   <span id="brand">EDGAR13F <span class="live">&#9679;</span> TERMINAL</span>
   <input id="cmd" autocomplete="off">
   <button id="go">GO &lt;GO&gt;</button>
+  <span id="alerts" title="13F filing alerts: click to enable browser notifications and review new filings">&#128276;</span>
   <span id="status"></span>
   <span id="clock"></span>
 </div>
+<div id="alerts-panel"></div>
 
 <div id="tape-wrap"><div id="tape"><span class="dim">connecting to market data...</span></div></div>
 
@@ -339,17 +351,20 @@
 <div class="screen active" id="screen-dash">
   <div id="tabbar"></div>
   <div id="dash-grid"></div>
+  <input type="file" id="import-file" accept="application/json,.json" style="display:none">
 </div>
 
 <!-- ==================== PORT screen ==================== -->
 <div class="screen" id="screen-port">
   <div id="port-grid">
     <div class="panel" id="p-portfolio">
-      <div class="panel-h">PORTFOLIO <span class="sub" id="portfolio-sub">select a manager</span></div>
+      <div class="panel-h">PORTFOLIO <span class="sub" id="portfolio-sub">select a manager</span>
+        <span class="lay-btn" data-csvfrom="portfolio-body" data-csvname="portfolio.csv" title="download this table as CSV" style="margin-left:auto">&#10515; CSV</span></div>
       <div class="panel-b" id="portfolio-body"><div class="loading">Loading holdings from SEC EDGAR...</div></div>
     </div>
     <div class="panel" id="p-changes">
-      <div class="panel-h">Q/Q CHANGES <span class="sub" id="changes-sub"></span></div>
+      <div class="panel-h">Q/Q CHANGES <span class="sub" id="changes-sub"></span>
+        <span class="lay-btn" data-csvfrom="changes-body" data-csvname="changes.csv" title="download this table as CSV" style="margin-left:auto">&#10515; CSV</span></div>
       <div class="panel-b" id="changes-body"><div class="loading">Waiting for portfolio...</div></div>
     </div>
     <div id="port-side">
@@ -358,7 +373,8 @@
         <div class="panel-b" id="alloc-body"><div class="loading">Waiting for portfolio...</div></div>
       </div>
       <div class="panel" id="p-consensus">
-        <div class="panel-h">SMART MONEY CONSENSUS <span class="sub" id="consensus-sub">across tracked managers</span></div>
+        <div class="panel-h">SMART MONEY CONSENSUS <span class="sub" id="consensus-sub">across tracked managers</span>
+          <span class="lay-btn" data-csvfrom="consensus-body" data-csvname="consensus.csv" title="download this table as CSV" style="margin-left:auto">&#10515; CSV</span></div>
         <div class="panel-b" id="consensus-body"><div class="loading">Cross-referencing 13F filings...</div></div>
       </div>
       <div class="panel" id="p-news">
@@ -439,7 +455,8 @@
 <!-- ==================== EQS (screener) screen ==================== -->
 <div class="screen" id="screen-eqs">
   <div class="panel" style="margin:8px">
-    <div class="panel-h">EQS <span class="sub">equity screener - curated large-cap universe (not the full S&amp;P 500 - see HELP)</span></div>
+    <div class="panel-h">EQS <span class="sub">equity screener - curated large-cap universe (not the full S&amp;P 500 - see HELP)</span>
+      <span class="lay-btn" data-csvfrom="eqs-body" data-csvname="screener.csv" title="download results as CSV" style="margin-left:auto">&#10515; CSV</span></div>
     <div class="panel-b">
       <div class="filter-row">
         <label>P/E &le;</label><input id="eqs-pe-max" placeholder="e.g. 25">
@@ -706,7 +723,7 @@
   <span class="fkey" data-cmd="ECO"><b>F7</b> ECO</span>
   <span class="fkey" data-cmd="PF"><b>F8</b> PF</span>
   <span class="fkey" data-cmd="HELP"><b>F9</b> HELP</span>
-  <span class="fkey dim">| SOURCES: SEC EDGAR &middot; YAHOO &middot; OPENFIGI &middot; COINGECKO &middot; FED REGISTER &middot; CNBC &middot; MARKETWATCH &middot; GOOGLE NEWS &middot; SEEKING ALPHA &middot; TREASURY &middot; BLS &middot; FED &middot; FRED (OPT)</span>
+  <span class="fkey dim">| SOURCES: SEC EDGAR &middot; YAHOO &middot; OPENFIGI &middot; COINGECKO &middot; ECB/FRANKFURTER &middot; FED REGISTER &middot; CNBC &middot; MARKETWATCH &middot; GOOGLE NEWS &middot; SEEKING ALPHA &middot; TREASURY &middot; BLS &middot; FED &middot; FRED (OPT)</span>
 </div>
 <div id="footer">
   13F data reports quarter-end long US equity positions with up to a ~45 day lag; excludes shorts, most options and cash.
@@ -955,6 +972,25 @@ async function loadConsensus() {
   } catch (e) {
     $("consensus-body").innerHTML = `<div class="loading">ERROR: ${esc(e.message)}</div>`;
   }
+}
+
+/* Download the table inside a container as CSV (cells as displayed). */
+function exportTableCsv(containerId, filename) {
+  const root = $(containerId);
+  const table = root && (root.tagName === "TABLE" ? root : root.querySelector("table"));
+  if (!table) { alert("Nothing to export yet - load the data first."); return; }
+  const csv = [...table.querySelectorAll("tr")].map(tr =>
+    [...tr.querySelectorAll("th,td")].map(cell => {
+      const text = cell.textContent.trim().replace(/\s+/g, " ");
+      return /[",\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+    }).join(",")
+  ).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 function newsItemsHtml(items) {
@@ -1413,11 +1449,16 @@ const WIDGETS = {
   "watchlist-news":    { label: "WATCHLIST NEWS", needs: "watchlist", load: loadWWatchlistNews, refresh: 300 },
   "watchlist-events":  { label: "WATCHLIST EVENTS", needs: "watchlist", load: loadWWatchlistEvents },
   "insiders":          { label: "INSIDER TRANSACTIONS", needs: "symbol", load: loadWInsiders, refresh: 300 },
+  "insider-buys":      { label: "INSIDER BUYS (SCREEN)", needs: "watchlist", load: loadWInsiderBuys },
   "position-history":  { label: "13F POSITION HISTORY", needs: "manager-symbol", load: loadWPositionHistory },
   "market-news":       { label: "MARKET NEWS", load: loadWMarketNews, refresh: 300 },
   "fed":               { label: "FED & POLICY", load: loadWFed, refresh: 300 },
   "yield-curve":       { label: "TREASURY YIELD CURVE", load: loadWYieldCurve },
   "world-markets":     { label: "WORLD MARKETS", wide: true, load: loadWWorldMarkets, refresh: 120 },
+  "crypto":            { label: "CRYPTO TOP 20", load: loadWCrypto, refresh: 120 },
+  "filings":           { label: "SEC FILINGS", needs: "symbol", load: loadWFilings, refresh: 300 },
+  "fx-matrix":         { label: "FX CROSS-RATE MATRIX", load: loadWFxMatrix },
+  "fund":              { label: "ETF/FUND HOLDINGS", needs: "symbol", load: loadWFund },
 };
 
 function widgetConfigLabel(w) {
@@ -1460,6 +1501,8 @@ function renderTabbar() {
        <span class="lay-btn" id="layout-save" title="snapshot ALL tabs + blocks under a name">SAVE</span>
        <span class="lay-btn" id="layout-load" title="replace the current layout with the selected snapshot">LOAD</span>
        <span class="lay-btn" id="layout-del" title="delete the selected snapshot">DEL</span>
+       <span class="lay-btn" id="state-export" title="download ALL terminal state (layouts, watchlists, portfolio) as a JSON backup">EXPORT</span>
+       <span class="lay-btn" id="state-import" title="restore terminal state from a JSON backup (replaces current)">IMPORT</span>
      </span>`;
 }
 
@@ -1757,6 +1800,79 @@ async function loadWWorldMarkets(el) {
     </div>`).join("") + `</div>`;
 }
 
+async function loadWInsiderBuys(el, cfg) {
+  const syms = getWL(cfg.list).filter(s => !s.startsWith("^") && !s.includes("=") && !s.includes("-USD")).slice(0, 15);
+  if (!syms.length) { el.innerHTML = '<div class="loading">Add stock symbols to this list to screen for insider buying.</div>'; return; }
+  el.innerHTML = '<div class="loading">Scanning Form 4s for ' + syms.length + ' symbols (first run is the slow one)...</div>';
+  const d = await getJSON("/api/insider-buys?filings=8&symbols=" + encodeURIComponent(syms.join(",")));
+  if (!d.buys.length) {
+    el.innerHTML = `<div class="loading">No open-market insider buys across ${syms.map(esc).join(", ")} `
+      + `in their last ${d.filings_per_symbol} Form 4s each. (Insider buying is rare - that's why it matters.)</div>`;
+    return;
+  }
+  const summary = `<div class="dim" style="padding:2px 6px">`
+    + d.summary.map(s => `<span class="up">${esc(s.symbol)} ${s.buy_count}x ${fmtMoneyK(s.total_value_usd)}</span>`).join(" &middot; ")
+    + `</div>`;
+  el.innerHTML = summary + `<table>
+    <thead><tr><th>DATE</th><th>SYM</th><th>INSIDER</th><th class="num">SHARES</th><th class="num">PRICE</th><th class="num">VALUE</th></tr></thead>
+    <tbody>${d.buys.slice(0, 20).map(b => `<tr>
+      <td class="dim">${esc(b.date || "?")}</td>
+      <td>${tkrCell(b.symbol)}</td>
+      <td class="issuer" title="${esc(b.insider)} - ${esc(b.relationship)}">${esc(b.insider)}</td>
+      <td class="num">${fmtNum(b.shares, 0)}</td>
+      <td class="num">${b.price_per_share == null ? "--" : fmtNum(b.price_per_share, 2)}</td>
+      <td class="num up">${b.value_usd == null ? "--" : fmtMoneyK(b.value_usd)}</td>
+    </tr>`).join("")}</tbody></table>`;
+}
+
+async function loadWFilings(el, cfg) {
+  const d = await getJSON("/api/filings/" + encodeURIComponent(cfg.symbol) + "?limit=15");
+  if (!d.filings.length) { el.innerHTML = '<div class="loading">No recent SEC filings.</div>'; return; }
+  el.innerHTML = `<table><thead><tr><th>FILED</th><th>FORM</th><th>PERIOD</th></tr></thead><tbody>` +
+    d.filings.map(f => `<tr>
+      <td class="dim">${esc(f.filing_date)}</td>
+      <td><a href="${esc(f.url)}" target="_blank" rel="noopener noreferrer">${esc(f.form || "?")}</a></td>
+      <td class="dim">${esc(f.period_of_report || "-")}</td>
+    </tr>`).join("") + `</tbody></table>`;
+}
+
+async function loadWFund(el, cfg) {
+  const d = await getJSON("/api/fund/" + encodeURIComponent(cfg.symbol) + "?top=25");
+  const total = d.net_assets;
+  el.innerHTML = `<div class="dim" style="padding:2px 6px">${esc(d.fund)} &middot; ${esc(d.report_period_date || "?")} &middot; net ${fmtMoneyK(total)} &middot; ${d.position_count} positions</div>
+    <table><thead><tr><th>NAME</th><th class="num">VALUE</th><th class="num">WEIGHT</th></tr></thead>
+    <tbody>${d.holdings.map(h => `<tr>
+      <td class="issuer" title="${esc(h.title)}">${esc(h.name)}</td>
+      <td class="num">${fmtMoneyK(h.value_usd)}</td>
+      <td class="num">${fmtNum(h.pct_val, 2)}%</td>
+    </tr>`).join("")}</tbody></table>`;
+}
+
+async function loadWFxMatrix(el) {
+  const d = await getJSON("/api/fx");
+  if (!d.matrix) { el.innerHTML = '<div class="loading">FX rates unavailable right now (ECB/Frankfurter unreachable).</div>'; return; }
+  const cur = d.currencies;
+  el.innerHTML = `<div class="dim" style="padding:2px 6px">ECB reference rates &middot; ${esc(d.date || "?")} &middot; row &rarr; column</div>
+    <table><thead><tr><th></th>${cur.map(c => `<th class="num">${esc(c)}</th>`).join("")}</tr></thead>
+    <tbody>${cur.map(a => `<tr><td><b>${esc(a)}</b></td>${cur.map(b => {
+      const r = d.matrix[a][b];
+      return `<td class="num ${a === b ? "dim" : ""}">${a === b ? "-" : fmtNum(r, r >= 100 ? 2 : 4)}</td>`;
+    }).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+async function loadWCrypto(el) {
+  const data = await getJSON("/api/crypto?limit=20");
+  if (!data.rows.length) { el.innerHTML = '<div class="loading">Crypto data unavailable right now.</div>'; return; }
+  el.innerHTML = `<div class="dim" style="padding:2px 6px">top ${data.rows.length} by market cap &middot; ${esc(data.source)}</div>
+    <table><tbody>${data.rows.map(r => `<tr>
+      <td class="dim">${r.rank ?? "--"}</td>
+      <td>${esc(r.symbol)}</td>
+      <td class="num">${r.price === null ? "--" : "$" + fmtNum(r.price, r.price < 1 ? 4 : 2)}</td>
+      <td class="num ${pctCls(r.change_pct_24h)}">${r.change_pct_24h == null ? "--" : signed(r.change_pct_24h) + "%"}</td>
+      <td class="num dim">${fmtMoneyK(r.market_cap)}</td>
+    </tr>`).join("")}</tbody></table>`;
+}
+
 /* ---- periodic widget refresh (active dashboard tab only) ---- */
 function refreshDashWidgets(minInterval) {
   if (!$("screen-dash").classList.contains("active")) return;
@@ -1997,6 +2113,79 @@ async function loadPF() {
   }
 }
 
+/* ---------- new-filing alerts (tracked managers' 13Fs) ----------
+   Polls /api/filing-alerts and compares accession numbers against the
+   last ones this browser acknowledged. First poll baselines silently;
+   afterwards a changed accession = a genuinely new quarterly filing. */
+const SEEN_FILINGS_KEY = "edgar13f_seen_filings_v1";
+let newFilings = [];
+const notifiedAccessions = new Set(); // per-session, avoid duplicate popups
+
+function getSeenFilings() {
+  try {
+    const d = JSON.parse(localStorage.getItem(SEEN_FILINGS_KEY) || "{}");
+    if (d && typeof d === "object" && !Array.isArray(d)) return d;
+  } catch (e) {}
+  return {};
+}
+
+function renderAlertsBadge() {
+  const el = $("alerts");
+  el.classList.toggle("hot", newFilings.length > 0);
+  el.innerHTML = "&#128276;" + (newFilings.length ? `<span class="cnt">${newFilings.length}</span>` : "");
+}
+
+async function pollFilingAlerts() {
+  let rows;
+  try { rows = await getJSON("/api/filing-alerts"); } catch (e) { return; }
+  if (!rows || !rows.length) return;
+  const seen = getSeenFilings();
+  const baseline = !Object.keys(seen).length;
+  newFilings = baseline ? [] : rows.filter(r => seen[r.cik] && seen[r.cik] !== r.accession_number);
+  if (baseline) {
+    rows.forEach(r => { seen[r.cik] = r.accession_number; });
+    localStorage.setItem(SEEN_FILINGS_KEY, JSON.stringify(seen));
+  }
+  renderAlertsBadge();
+  if ("Notification" in window && Notification.permission === "granted") {
+    newFilings.filter(f => !notifiedAccessions.has(f.accession_number)).forEach(f => {
+      notifiedAccessions.add(f.accession_number);
+      new Notification("New 13F filing: " + f.label.toUpperCase(), {
+        body: `Period ${f.period_of_report || "?"} - filed ${f.filing_date}. Open the terminal to see what changed.`,
+      });
+    });
+  }
+}
+
+function toggleAlertsPanel() {
+  const panel = $("alerts-panel");
+  if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission(); // user gesture: safe point to ask
+  }
+  const notifState = !("Notification" in window) ? "not supported by this browser"
+    : Notification.permission === "granted" ? "on" : "off (blocked or not yet allowed)";
+  panel.innerHTML = newFilings.length
+    ? `<div class="dim" style="margin-bottom:4px">NEW 13F FILINGS SINCE YOU LAST LOOKED &middot; desktop notifications: ${esc(notifState)}</div>`
+      + newFilings.map(f => `<div class="news-item">
+          <span class="fkey" data-cmd="${esc(f.label)} PORT" style="color:var(--amber)">${esc(f.label.toUpperCase())}</span>
+          <span class="dim">period ${esc(f.period_of_report || "?")} &middot; filed ${esc(f.filing_date)}</span>
+        </div>`).join("")
+      + `<div style="margin-top:6px"><span class="lay-btn" id="alerts-dismiss">MARK ALL SEEN</span></div>`
+    : `<div class="dim">No new 13F filings from tracked managers since you last looked.<br>
+       Checked on load and every 30 minutes. Desktop notifications: ${esc(notifState)}.</div>`;
+  panel.classList.add("open");
+}
+
+function dismissAlerts() {
+  const seen = getSeenFilings();
+  newFilings.forEach(f => { seen[f.cik] = f.accession_number; });
+  localStorage.setItem(SEEN_FILINGS_KEY, JSON.stringify(seen));
+  newFilings = [];
+  renderAlertsBadge();
+  $("alerts-panel").classList.remove("open");
+}
+
 /* ---------- boot & events ---------- */
 async function boot() {
   layout = getLayout();
@@ -2067,6 +2256,19 @@ async function boot() {
       loadMarkets();
       return;
     }
+    // Filing-alert bell + its dropdown panel.
+    if (e.target.closest("#alerts")) { toggleAlertsPanel(); return; }
+    if (e.target.closest("#alerts-dismiss")) { dismissAlerts(); return; }
+    if (e.target.closest("#alerts-panel .fkey")) {
+      // The global .fkey handler runs the command; just close the panel.
+      $("alerts-panel").classList.remove("open");
+    }
+    // "⤓ CSV" buttons: export whatever table the panel currently shows.
+    const csvBtn = e.target.closest("[data-csvfrom]");
+    if (csvBtn) {
+      exportTableCsv(csvBtn.dataset.csvfrom, csvBtn.dataset.csvname || "export.csv");
+      return;
+    }
     // Named layout snapshots (SAVE / LOAD / DEL in the tab bar).
     if (e.target.closest("#layout-save")) {
       const suggested = ($("layout-select") || {}).value || "";
@@ -2091,6 +2293,24 @@ async function boot() {
       if (!layout.tabs.find(t => t.id === layout.active)) layout.active = "home";
       saveLayout(layout);
       renderDashboard();
+      return;
+    }
+    if (e.target.closest("#state-export")) {
+      const state_ = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("edgar13f_")) state_[k] = localStorage.getItem(k);
+      }
+      const blob = new Blob([JSON.stringify(state_, null, 1)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "edgar13f-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      return;
+    }
+    if (e.target.closest("#state-import")) {
+      $("import-file").click();
       return;
     }
     if (e.target.closest("#layout-del")) {
@@ -2131,6 +2351,24 @@ async function boot() {
     const el = document.getElementById("wb-" + w.id);
     if (el) el.innerHTML = '<div class="loading">Loading...</div>';
     loadWidget(w);
+  });
+
+  // Restore a JSON backup made by EXPORT: replaces every edgar13f_* key.
+  $("import-file").addEventListener("change", () => {
+    const file = $("import-file").files[0];
+    $("import-file").value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let data;
+      try { data = JSON.parse(reader.result); } catch (err) { alert("Not a valid JSON backup."); return; }
+      const keys = Object.keys(data || {}).filter(k => k.startsWith("edgar13f_") && typeof data[k] === "string");
+      if (!keys.length) { alert("No edgar13f state found in that file."); return; }
+      if (!confirm(`Restore ${keys.length} settings (layouts, watchlists, portfolio) from "${file.name}"? Current state will be replaced.`)) return;
+      keys.forEach(k => localStorage.setItem(k, data[k]));
+      location.reload();
+    };
+    reader.readAsText(file);
   });
 
   $("back-btn").addEventListener("click", () => {
@@ -2208,6 +2446,11 @@ async function boot() {
   setInterval(() => { if ($("screen-news").classList.contains("active")) loadWire(); }, 300_000);
   setInterval(() => refreshDashWidgets(60), 60_000);
   setInterval(() => refreshDashWidgets(300), 300_000);
+
+  // 13F filing alerts: baseline/check on boot, then every 30 minutes.
+  renderAlertsBadge();
+  pollFilingAlerts();
+  setInterval(pollFilingAlerts, 1_800_000);
   // PORT screen data (consensus/news panels) loads lazily on first visit.
 }
 

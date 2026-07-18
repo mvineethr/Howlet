@@ -16,6 +16,7 @@ class FilingSummary:
     filing_date: date
     period_of_report: Optional[date]
     primary_doc: str
+    form: Optional[str] = None  # e.g. "13F-HR", "4", "8-K"
 
     @property
     def accession_no_dashes(self) -> str:

@@ -20,5 +20,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install
         run: pip install -e ".[dev,mcp]"
+      - name: Lint (ruff)
+        run: ruff check src/ tests/
       - name: Test (offline - no network calls, all HTTP is mocked)
         run: pytest tests/ -v

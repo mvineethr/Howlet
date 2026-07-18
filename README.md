@@ -103,6 +103,23 @@ edgar13f insiders NVDA --filings 25 --all
 
 # One manager's stake in one name across quarters (watch Buffett trim AAPL)
 edgar13f history buffett AAPL --quarters 12
+
+# Screen a whole list for open-market insider BUYS (the conviction signal)
+edgar13f insider-buys AAPL MSFT NVDA OXY JPM --filings 10
+
+# What does an ETF actually hold? (latest monthly NPORT-P filing)
+edgar13f fund ARKK
+edgar13f fund VOO --csv voo_holdings.csv
+
+# A company's recent SEC filings feed
+edgar13f filings AAPL --form 8-K
+
+# Full-text search the CONTENT of every filing since 2001
+edgar13f fts '"supply chain disruption"' --forms 8-K
+
+# Pre-fetch all tracked managers + ticker mappings (cron-able) so the
+# dashboard's first consensus/holders load is instant
+edgar13f warm
 ```
 
 ## The terminal dashboard
@@ -119,10 +136,14 @@ offers 13F portfolios (pick a manager), Q/Q changes, smart-money
 consensus, watchlists (create as many named lists as you want),
 watchlist-scoped news (headlines for *only* your names), watchlist
 events (earnings dates + analyst views), insider transactions (Form 4
-buys/sells for a ticker), 13F position history (a manager's stake in
-one name across quarters), market news, Fed & policy, the Treasury
-yield curve, and world markets. "+ TAB" adds extra tabs for the
-less-important stuff. Every block has ↔ / ↕ toggles to make it full-width
+buys/sells for a ticker), an insider-BUY screen across a whole
+watchlist, 13F position history (a manager's stake in one name across
+quarters), a company's SEC filings feed, ETF/fund holdings (NPORT-P),
+market news, Fed & policy, the Treasury yield curve, world markets,
+crypto top-20, and an FX cross-rate matrix. "+ TAB" adds extra tabs for
+the less-important stuff. A topbar bell polls for brand-new 13F filings
+from the tracked managers (with opt-in desktop notifications), and
+EXPORT/IMPORT in the tab bar backs up ALL of it to a JSON file. Every block has ↔ / ↕ toggles to make it full-width
 or double-height, and the LAYOUTS control in the tab bar saves named
 snapshots of your entire screen (all tabs + blocks + sizes) that you can
 reload or delete any time. One click restores the classic layout if you
@@ -189,12 +210,17 @@ Claude Desktop (`claude_desktop_config.json`):
   "env": {"EDGAR_USER_AGENT": "Your Name you@example.com"}}}}
 ```
 
-Exposed tools (19): `search_manager`, `list_managers`, `get_portfolio`,
+Exposed tools (27): `search_manager`, `list_managers`, `get_portfolio`,
 `get_portfolio_changes`, `get_consensus`, `get_holders`,
 `get_position_history` (a manager's stake across quarters),
-`get_insider_transactions` (Form 4), `get_quote`,
-`get_price_history` (incl. technical studies), `get_fundamentals`,
-`get_news`, `get_world_markets`, `get_corporate_events`,
+`get_insider_transactions` (Form 4), `screen_insider_buys` (open-market
+P buys across a symbol list), `get_latest_filings` (new-13F detection),
+`search_filing_text` (EDGAR full-text search), `get_company_filings`
+(8-K/10-K feed), `get_fund_holdings` (ETF/fund NPORT-P holdings),
+`get_quote`, `get_price_history` (incl. technical studies),
+`get_fundamentals`, `get_news`, `get_world_markets`,
+`get_crypto_markets`, `get_fx_matrix` (ECB cross rates),
+`get_sec_rulemaking` (Federal Register), `get_corporate_events`,
 `get_fed_calendar`, `get_macro_snapshot`, `screen_securities`,
 `get_options_chain`, `analyze_portfolio_risk`.
 
@@ -202,10 +228,12 @@ Exposed tools (19): `search_manager`, `list_managers`, `get_portfolio`,
 
 Not everything here has the same reliability. Know what you're standing on:
 
-- **Official & keyless (rock solid):** SEC EDGAR (13F, XBRL fundamentals,
-  proxy filings), Treasury.gov (yield curve), Federal Reserve (RSS),
-  BLS (25 queries/day/IP without signup), Federal Register (SEC
-  rulemaking on the ECO screen).
+- **Official & keyless (rock solid):** SEC EDGAR (13F, Form 4, NPORT-P
+  fund holdings, XBRL fundamentals, proxy filings, full-text search),
+  Treasury.gov (yield curve), Federal Reserve (RSS), BLS (25
+  queries/day/IP without signup), Federal Register (SEC rulemaking on
+  the ECO screen), ECB reference rates via Frankfurter (FX matrix -
+  daily fixings, not live ticks).
 - **Unofficial & keyless (can break silently):** Yahoo's chart endpoint
   (quotes/history) and especially its crumb-authed endpoints (options
   chains, earnings dates, analyst views) — Yahoo has changed this auth
@@ -219,8 +247,8 @@ Not everything here has the same reliability. Know what you're standing on:
   CPI, unemployment, 10-year yield, and 30-year mortgage rate from FRED.
   Never required — the only key-gated source in the project.
 - **Open-source charting:** the DES chart is KLineChart (Apache-2.0),
-  loaded from the jsDelivr CDN and fed entirely by this terminal's own
-  data — no indicator or drawing-tool paywalls.
+  vendored into the package (no CDN at runtime) and fed entirely by this
+  terminal's own data — no indicator or drawing-tool paywalls.
 
 ## Caching
 

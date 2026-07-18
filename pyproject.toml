@@ -1,6 +1,6 @@
 [project]
 name = "edgar13f"
-version = "0.7.0"
+version = "0.8.0"
 description = "Free, no-API-key Python client + CLI for SEC EDGAR 13F institutional holdings data"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -18,6 +18,7 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "responses>=0.25",
+    "ruff>=0.4",
 ]
 mcp = [
     "mcp>=1.2",

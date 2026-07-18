@@ -5,7 +5,7 @@
 A free, no-API-key, open-source Bloomberg-style terminal built on SEC
 EDGAR 13F data ("what is Warren Buffett buying"), grown into a full
 market terminal: web dashboard (`edgar13f dashboard`), CLI, Python
-library, and an MCP server (`edgar13f mcp`, 21 tools) so any AI agent
+library, and an MCP server (`edgar13f mcp`, 27 tools) so any AI agent
 can drive it. Everything is verified live against the real APIs, not
 just offline mocks - that habit has caught a real bug almost every
 session (see Gotchas).
@@ -36,6 +36,9 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 | `macro.py` | Treasury yield curve (keyless), BLS unregistered tier, FRED (optional key) |
 | `crypto.py` | Top coins by market cap: CoinGecko keyless tier, Coinpaprika fallback, 60s TTL cache; degrades to empty |
 | `regulatory.py` | SEC rulemaking/notices from the Federal Register API (keyless, official); degrades to empty |
+| `fulltext.py` | EDGAR full-text search (efts.sec.gov, keyless official): search filing CONTENT since 2001 |
+| `fx.py` | ECB daily FX reference rates via Frankfurter (`api.frankfurter.dev/v1` - old .app domain 301s); derived cross-rate matrix, 1h cache; degrades to {} |
+| `nport.py` | N-PORT fund holdings: ticker->series via company_tickers_mf.json, series-scoped browse-edgar for accessions, primary_doc.xml parse. UITs (SPY) have no NPORT trail |
 | `yahoo_auth.py` | Yahoo cookie+crumb workaround for walled endpoints; consumers must degrade, never raise |
 | `views.py` | Shared JSON view layer - Flask endpoints AND MCP tools both wrap these |
 | `dashboard.py` | Flask wiring only; UI lives in `dashboard.html` (single file, vanilla JS) |
@@ -135,8 +138,18 @@ screener, ECO (Treasury/BLS/FRED/Fed + SEC RULEMAKING from the Federal
 Register), PF risk, options (experimental),
 **Form 4 insider transactions** (CLI `insiders`, `/api/insiders`, MCP
 tool, dashboard block), **13F position history** (CLI `history`,
-`/api/position-history`, MCP tool, dashboard block w/ value bars), MCP
-server with 21 tools, GitHub Actions CI, Docker. Presets: 14 tracked
+`/api/position-history`, MCP tool, dashboard block w/ value bars),
+**insider-buy screening** (CLI `insider-buys`, `/api/insider-buys`,
+watchlist-scoped dashboard block), **new-13F-filing alerts** (topbar
+bell + optional desktop notifications, 30-min poll), **EDGAR full-text
+search** (CLI `fts`, `/api/fulltext`) + **company filings feed** (CLI
+`filings`, `/api/filings`, SEC FILINGS block), **N-PORT fund holdings**
+(CLI `fund`, `/api/fund`, ETF/FUND HOLDINGS block; ARKK verified live -
+UITs like SPY correctly error), **FX cross-rate matrix** (Frankfurter/
+ECB, `/api/fx`, dashboard block), **CRYPTO TOP 20 block**, **`edgar13f
+warm`** cache pre-fetcher, **EXPORT/IMPORT state backup**, CSV export
+buttons on the main tables, ruff in CI + HTML smoke tests, MCP
+server with 27 tools, GitHub Actions CI, Docker. Presets: 14 tracked
 managers (Buffett, Burry, Ackman, Icahn, Tepper, Klarman, Loeb, Dalio,
 Druckenmiller, Marks, Li Lu, Einhorn/DME, Fundsmith, Tiger Global) -
 every CIK verified live against a current 13F-HR.
@@ -148,15 +161,15 @@ error clearly, never exercised).
 
 1. **Publish** - the only remaining step needs the user's accounts:
    create the GitHub repo + push (CI will run then), and
-   `twine upload dist/edgar13f-0.7.0*` to PyPI. CHANGELOG, version
-   0.7.0, sdist+wheel (twine-checked), and the local git repo with the
-   initial commit are all done.
-2. **Form 4 dashboard depth** - a watchlist-scoped insiders block, or
-   insider-buy screening across the tracked universe.
-3. **Frankfurter** (keyless ECB FX time series - cross-rate matrix
-   widget): the one remaining candidate from the user's public-API
-   lists (2026-07-17). CoinGecko and Federal Register are wired in;
-   probe live before building (rate limits drift).
+   `twine upload dist/edgar13f-0.8.0*` to PyPI. CHANGELOG, version
+   0.8.0, sdist+wheel (twine-checked), and the local git history are
+   all done.
+2. **N-PORT depth** - disk-cache parsed NPORT filings by accession
+   (immutable, same as 13F/Form 4), fund position history across
+   months, or fund-vs-13F overlap views.
+3. **Finer-grained EDGAR locking** - `edgar_lock` serializes ALL EDGAR
+   access; a cold consensus load still blocks the other EDGAR-backed
+   panels (mitigated day-to-day by `edgar13f warm`).
 
 ## Working rules
 

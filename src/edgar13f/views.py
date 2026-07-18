@@ -27,6 +27,7 @@ from .crypto import CryptoClient
 from .diff import STATUS_ORDER, diff_holdings
 from .events import CorporateEventsClient, get_fed_events, get_shareholder_meetings
 from .form4 import TRANSACTION_CODE_LABELS, list_form4_filings
+from .fulltext import search_filings
 from .fundamentals import FundamentalsClient
 from .indicators import (
     bollinger_bands,
@@ -38,6 +39,7 @@ from .indicators import (
 )
 from .market import Quote, YahooMarketClient
 from .news import NewsClient
+from .nport import get_fund_holdings, list_nport_accessions, ticker_to_fund
 from .options import OptionsClient
 from .presets import FAMOUS_INVESTORS
 from .risk import analyze_portfolio
@@ -453,6 +455,226 @@ def position_history_view(
     }
 
 
+def _symbol_form4_transactions(svc: Services, symbol: str, filings: int):
+    """(cik, transactions) for one ticker's recent Form 4s, cache-first.
+    cik is None when SEC has no filer for the symbol. Must be called
+    with svc.edgar_lock held."""
+    cik = svc.fundamentals.ticker_to_cik(symbol)
+    if cik is None:
+        return None, []
+    transactions = []
+    for f in list_form4_filings(svc.edgar, cik, limit=filings):
+        transactions.extend(
+            cached_form4_transactions(svc.edgar, svc.form4_cache, f)
+        )
+    return cik, transactions
+
+
+def insider_buys_view(
+    svc: Services, symbols: list[str], filings_per_symbol: int = 8
+) -> dict:
+    """Open-market insider BUYS (Form 4 code P) across a symbol list.
+
+    The classic conviction screen: insiders sell for many reasons but
+    buy on the open market for only one. Scans each symbol's recent
+    Form 4 filings (cache-first; first run on an uncached symbol costs
+    ~`filings_per_symbol` SEC requests) and returns every P transaction
+    plus a per-symbol rollup sorted by most recent buy.
+    """
+    filings_per_symbol = min(filings_per_symbol, 20)
+    symbols = [s.strip().upper() for s in symbols if s.strip()][:25]
+
+    buys = []
+    summary: dict[str, dict] = {}
+    scanned = []
+    for symbol in symbols:
+        with svc.edgar_lock:
+            cik, transactions = _symbol_form4_transactions(
+                svc, symbol, filings_per_symbol
+            )
+        if cik is None:
+            continue
+        scanned.append(symbol)
+        for t in transactions:
+            if t.transaction_code != "P":
+                continue
+            buys.append(
+                {
+                    "symbol": symbol,
+                    "insider": t.insider_name,
+                    "relationship": t.relationship,
+                    "date": t.transaction_date,
+                    "shares": t.shares,
+                    "price_per_share": t.price_per_share,
+                    "value_usd": t.value_usd,
+                    "shares_owned_after": t.shares_owned_after,
+                    "filing_date": t.filing_date,
+                    "accession_number": t.accession_number,
+                }
+            )
+            s = summary.setdefault(
+                symbol,
+                {"symbol": symbol, "buy_count": 0, "total_shares": 0.0,
+                 "total_value_usd": 0.0, "latest_date": None},
+            )
+            s["buy_count"] += 1
+            s["total_shares"] += t.shares
+            s["total_value_usd"] += t.value_usd or 0.0
+            if t.transaction_date and (
+                s["latest_date"] is None or t.transaction_date > s["latest_date"]
+            ):
+                s["latest_date"] = t.transaction_date
+
+    buys.sort(key=lambda b: (b["date"] or "", b["filing_date"]), reverse=True)
+    summary_rows = sorted(
+        summary.values(),
+        key=lambda s: (s["latest_date"] or "", s["total_value_usd"]),
+        reverse=True,
+    )
+    return {
+        "symbols_scanned": scanned,
+        "filings_per_symbol": filings_per_symbol,
+        "summary": summary_rows,
+        "buys": buys,
+    }
+
+
+def fund_view(svc: Services, symbol: str, top: int = 50) -> dict:
+    """What an ETF/mutual fund holds, from its latest NPORT-P filing.
+
+    Monthly filings with a ~60 day public lag; weights are the fund's
+    own reported pctVal (% of net assets). Raises LookupError for
+    tickers with no NPORT trail (operating companies, unit investment
+    trusts like SPY).
+    """
+    top = min(top, 200)
+    with svc.edgar_lock:
+        fund = ticker_to_fund(svc.edgar, symbol)
+        if fund is None:
+            raise LookupError(
+                f"'{symbol}' is not an SEC-registered fund with NPORT-P "
+                "filings (operating company? unit investment trusts like "
+                "SPY report differently)"
+            )
+        cik, series_id = fund
+        accessions = list_nport_accessions(svc.edgar, series_id, limit=1)
+        if not accessions:
+            raise LookupError(f"No NPORT-P filings found for '{symbol}'")
+        info, holdings = get_fund_holdings(svc.edgar, cik, accessions[0])
+
+    return {
+        "symbol": symbol.upper(),
+        "registrant": info.registrant,
+        "fund": info.series_name,
+        "series_id": info.series_id,
+        "report_period_date": info.report_period_date,
+        "total_assets": info.total_assets,
+        "net_assets": info.net_assets,
+        "accession_number": accessions[0],
+        "position_count": len(holdings),
+        "holdings": [
+            {
+                "name": h.name,
+                "title": h.title,
+                "cusip": h.cusip,
+                "balance": h.balance,
+                "value_usd": h.value_usd,
+                "pct_val": h.pct_val,
+                "asset_cat": h.asset_cat,
+                "issuer_cat": h.issuer_cat,
+                "country": h.country,
+            }
+            for h in holdings[:top]
+        ],
+    }
+
+
+def fulltext_search_view(
+    svc: Services, query: str, forms: Optional[list[str]] = None, limit: int = 20
+) -> dict:
+    """Search the CONTENT of EDGAR filings (2001-present, official SEC
+    full-text index). Quote a phrase for exact match. Relevance-ranked."""
+    limit = min(limit, 50)
+    with svc.edgar_lock:
+        results = search_filings(svc.edgar, query, forms=forms, limit=limit)
+    return {"query": query, "forms": forms or [], "results": results}
+
+
+def company_filings_view(
+    svc: Services, symbol: str, form: Optional[str] = None, limit: int = 20
+) -> dict:
+    """A company's recent SEC filings feed (8-Ks, 10-K/Q, proxies, ...),
+    newest first, straight from the submissions API. `form` filters to
+    one type; default is everything the company files."""
+    limit = min(limit, 50)
+    with svc.edgar_lock:
+        cik = svc.fundamentals.ticker_to_cik(symbol)
+        if cik is None:
+            raise LookupError(
+                f"SEC has no filer for ticker '{symbol}' (foreign or non-equity?)"
+            )
+        company = svc.fundamentals.company_name(symbol)
+        filings = svc.edgar.list_filings(cik, form, limit=limit)
+    return {
+        "symbol": symbol.upper(),
+        "cik": cik,
+        "company": company,
+        "filings": [
+            {
+                "form": f.form,
+                "filing_date": f.filing_date.isoformat(),
+                "period_of_report": (
+                    f.period_of_report.isoformat() if f.period_of_report else None
+                ),
+                "accession_number": f.accession_number,
+                "url": (
+                    f"{f.filing_index_url}{f.primary_doc.split('/')[-1]}"
+                    if f.primary_doc
+                    else f.filing_index_url
+                ),
+            }
+            for f in filings
+        ],
+    }
+
+
+def latest_filings_view(svc: Services) -> list[dict]:
+    """Every tracked manager's most recent 13F-HR, for new-filing alerts.
+
+    One submissions fetch per unique preset CIK (SEC-side cached, cheap).
+    The dashboard polls this and compares accession numbers against what
+    the browser has already seen; a changed accession = a new filing.
+    Managers whose fetch fails are skipped rather than failing the poll.
+    """
+    rows = []
+    seen_ciks: set[str] = set()
+    for label, cik in FAMOUS_INVESTORS.items():
+        if cik in seen_ciks:
+            continue
+        seen_ciks.add(cik)
+        try:
+            with svc.edgar_lock:
+                filings = svc.edgar.list_13f_filings(cik, limit=1)
+        except Exception:
+            continue  # one broken manager must not kill the alert poll
+        if not filings:
+            continue
+        f = filings[0]
+        rows.append(
+            {
+                "label": label,
+                "cik": f.cik,
+                "form": "13F-HR",
+                "accession_number": f.accession_number,
+                "filing_date": f.filing_date.isoformat(),
+                "period_of_report": (
+                    f.period_of_report.isoformat() if f.period_of_report else None
+                ),
+            }
+        )
+    return rows
+
+
 def insiders_view(svc: Services, symbol: str, filings: int = 15) -> dict:
     """Form 4 insider transactions for a company (Bloomberg-style GP/II).
 
@@ -660,6 +882,15 @@ def crypto_view(svc: Services, limit: int = 50) -> dict:
     if both providers are unreachable - the UI shows "unavailable"."""
     source, rows = svc.crypto.get_markets(limit=limit)
     return {"source": source, "rows": rows}
+
+
+def fx_matrix_view(currencies: Optional[list[str]] = None) -> dict:
+    """FX cross-rate matrix from ECB daily reference rates (Frankfurter,
+    keyless). Official fixings updated once per working day - the tape's
+    Yahoo quotes cover intraday. {} fields when unreachable."""
+    from . import fx
+
+    return fx.get_fx_matrix(currencies=currencies)
 
 
 def regulatory_view(limit: int = 20) -> list[dict]:

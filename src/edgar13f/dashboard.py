@@ -96,6 +96,47 @@ def create_app(
         filings = int(request.args.get("filings", 15))
         return jsonify(views.insiders_view(svc, symbol, filings=filings))
 
+    @app.get("/api/fulltext")
+    def fulltext():
+        query = request.args.get("q", "").strip()
+        if not query:
+            return jsonify({"error": "q parameter required"}), 400
+        forms_arg = request.args.get("forms", "").strip()
+        forms = [f for f in forms_arg.split(",") if f] if forms_arg else None
+        limit = int(request.args.get("limit", 20))
+        return jsonify(views.fulltext_search_view(svc, query, forms=forms, limit=limit))
+
+    @app.get("/api/filings/<symbol>")
+    def company_filings(symbol: str):
+        form = request.args.get("form") or None
+        limit = int(request.args.get("limit", 20))
+        return jsonify(views.company_filings_view(svc, symbol, form=form, limit=limit))
+
+    @app.get("/api/fund/<symbol>")
+    def fund(symbol: str):
+        top = int(request.args.get("top", 50))
+        return jsonify(views.fund_view(svc, symbol, top=top))
+
+    @app.get("/api/fx")
+    def fx_matrix():
+        currencies_arg = request.args.get("currencies", "").strip()
+        currencies = (
+            [c for c in currencies_arg.split(",") if c] if currencies_arg else None
+        )
+        return jsonify(views.fx_matrix_view(currencies=currencies))
+
+    @app.get("/api/filing-alerts")
+    def filing_alerts():
+        return jsonify(views.latest_filings_view(svc))
+
+    @app.get("/api/insider-buys")
+    def insider_buys():
+        symbols = [s for s in request.args.get("symbols", "").split(",") if s][:25]
+        filings = int(request.args.get("filings", 8))
+        return jsonify(
+            views.insider_buys_view(svc, symbols, filings_per_symbol=filings)
+        )
+
     @app.get("/api/security/<symbol>")
     def security(symbol: str):
         range_ = request.args.get("range", "6mo")

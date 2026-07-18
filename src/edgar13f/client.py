@@ -176,9 +176,10 @@ class EdgarClient:
         return self._get(url).json()
 
     def list_filings(
-        self, cik, form_type: str, limit: int = 8
+        self, cik, form_type: Optional[str], limit: int = 8
     ) -> list[FilingSummary]:
-        """Most recent filings of one form type for a CIK, newest first.
+        """Most recent filings of one form type (or ANY form when
+        form_type is None) for a CIK, newest first.
 
         `submissions/CIK....json` only covers the filer's *recent* filings
         (capped around 1000 across all form types). Filers with longer
@@ -196,7 +197,7 @@ class EdgarClient:
         def consume(block: dict) -> bool:
             """Append matching filings from one block; True once limit hit."""
             for i, form in enumerate(block["form"]):
-                if form != form_type:
+                if form_type is not None and form != form_type:
                     continue
                 period_raw = block["reportDate"][i]
                 filings.append(
@@ -212,6 +213,7 @@ class EdgarClient:
                             else None
                         ),
                         primary_doc=block["primaryDocument"][i],
+                        form=form,
                     )
                 )
                 if len(filings) >= limit:

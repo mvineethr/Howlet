@@ -527,6 +527,216 @@ def holders(symbol: str):
     console.print(table)
 
 
+@main.command(name="insider-buys")
+@click.argument("symbols", nargs=-1, required=True)
+@click.option("--filings", default=8, show_default=True, help="Recent Form 4 filings to scan per symbol")
+def insider_buys(symbols: tuple[str, ...], filings: int):
+    """Screen a list of tickers for open-market insider BUYS (code P).
+
+    Insiders sell for many reasons but buy on the open market for only
+    one. First scan of an uncached symbol costs ~FILINGS SEC requests;
+    everything is disk-cached afterwards.
+
+    Example: edgar13f insider-buys AAPL MSFT NVDA JPM --filings 10
+    """
+    from .views import Services, insider_buys_view
+
+    svc = Services(_get_user_agent())
+    console.print(
+        f"[dim]Scanning {len(symbols)} symbols x {filings} Form 4 filings "
+        "(first run per symbol is the slow one)...[/dim]"
+    )
+    result = insider_buys_view(svc, list(symbols), filings_per_symbol=filings)
+
+    if not result["buys"]:
+        console.print(
+            f"No open-market insider buys found across "
+            f"{', '.join(result['symbols_scanned']) or 'the given symbols'} "
+            f"in their last {result['filings_per_symbol']} Form 4s each."
+        )
+        return
+
+    summary = Table(title="Insider buying by symbol")
+    summary.add_column("Symbol")
+    summary.add_column("Buys", justify="right")
+    summary.add_column("Shares", justify="right")
+    summary.add_column("Value ($)", justify="right")
+    summary.add_column("Latest buy")
+    for s in result["summary"]:
+        summary.add_row(
+            s["symbol"], str(s["buy_count"]), f"{s['total_shares']:,.0f}",
+            f"{s['total_value_usd']:,.0f}", s["latest_date"] or "?",
+        )
+    console.print(summary)
+
+    table = Table(title="Individual open-market purchases")
+    table.add_column("Date")
+    table.add_column("Symbol")
+    table.add_column("Insider")
+    table.add_column("Role")
+    table.add_column("Shares", justify="right")
+    table.add_column("Price", justify="right")
+    table.add_column("Value ($)", justify="right")
+    for b in result["buys"][:40]:
+        table.add_row(
+            b["date"] or "?",
+            b["symbol"],
+            b["insider"],
+            b["relationship"],
+            f"{b['shares']:,.0f}",
+            f"{b['price_per_share']:,.2f}" if b["price_per_share"] else "--",
+            f"{b['value_usd']:,.0f}" if b["value_usd"] else "--",
+        )
+    console.print(table)
+
+
+@main.command()
+@click.argument("query")
+@click.option("--forms", default=None, help="Comma-separated form filter, e.g. 8-K or 10-K,10-Q")
+@click.option("--limit", default=20, show_default=True)
+def fts(query: str, forms: str | None, limit: int):
+    """Full-text search across the CONTENT of all EDGAR filings.
+
+    Quote a phrase for exact match. Examples:
+
+        edgar13f fts '"supply chain disruption"' --forms 8-K
+        edgar13f fts '"artificial intelligence" datacenter' --forms 10-K
+    """
+    from .views import Services, fulltext_search_view
+
+    svc = Services(_get_user_agent())
+    form_list = [f.strip() for f in forms.split(",") if f.strip()] if forms else None
+    result = fulltext_search_view(svc, query, forms=form_list, limit=limit)
+    if not result["results"]:
+        console.print(f"No filings match {query!r}.")
+        return
+    table = Table(title=f"EDGAR full-text search: {query}")
+    table.add_column("Filed")
+    table.add_column("Form")
+    table.add_column("Company")
+    table.add_column("Doc")
+    for r in result["results"]:
+        table.add_row(
+            r["file_date"] or "?", r["form"] or "?", r["company"] or "?",
+            r["url"] or "-",
+        )
+    console.print(table)
+
+
+@main.command()
+@click.argument("symbol")
+@click.option("--form", default=None, help="Filter to one form type, e.g. 8-K")
+@click.option("--limit", default=20, show_default=True)
+def filings(symbol: str, form: str | None, limit: int):
+    """A company's recent SEC filings feed, newest first.
+
+    Example: edgar13f filings AAPL --form 8-K
+    """
+    from .views import Services, company_filings_view
+
+    svc = Services(_get_user_agent())
+    result = company_filings_view(svc, symbol, form=form, limit=limit)
+    table = Table(
+        title=f"{result['company']} (CIK {result['cik']}) - recent filings"
+    )
+    table.add_column("Filed")
+    table.add_column("Form")
+    table.add_column("Period")
+    table.add_column("Document")
+    for f in result["filings"]:
+        table.add_row(
+            f["filing_date"], f["form"] or "?", f["period_of_report"] or "-",
+            f["url"],
+        )
+    console.print(table)
+
+
+@main.command()
+@click.argument("symbol")
+@click.option("--top", default=25, show_default=True)
+@click.option("--csv", "csv_path", default=None, help="Write all holdings to this CSV path instead of printing")
+def fund(symbol: str, top: int, csv_path: str | None):
+    """What an ETF or mutual fund holds, from its latest NPORT-P filing.
+
+    Monthly filings, ~60 day public lag, with the fund's own weight
+    percentages. Unit investment trusts (SPY) don't file NPORT-P.
+
+    Example: edgar13f fund ARKK
+    """
+    from .views import Services, fund_view
+
+    svc = Services(_get_user_agent())
+    result = fund_view(svc, symbol, top=200 if csv_path else top)
+
+    if csv_path:
+        with open(csv_path, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                ["name", "cusip", "balance", "value_usd", "pct_val",
+                 "asset_cat", "issuer_cat", "country"]
+            )
+            for h in result["holdings"]:
+                writer.writerow(
+                    [h["name"], h["cusip"], h["balance"], h["value_usd"],
+                     h["pct_val"], h["asset_cat"], h["issuer_cat"], h["country"]]
+                )
+        console.print(f"Wrote {len(result['holdings'])} holdings to {csv_path}")
+        return
+
+    net = result["net_assets"]
+    header = (
+        f"[bold]{result['fund']}[/bold] ({result['registrant']}) - "
+        f"period {result['report_period_date'] or '?'}"
+    )
+    if net:
+        header += f", net assets ${net:,.0f}"
+    console.print(header)
+    table = Table(title=f"Top holdings - {result['symbol']} ({result['position_count']} positions)")
+    table.add_column("Name")
+    table.add_column("Balance", justify="right")
+    table.add_column("Value ($)", justify="right")
+    table.add_column("Weight", justify="right")
+    for h in result["holdings"][:top]:
+        table.add_row(
+            h["name"], f"{h['balance']:,.0f}", f"{h['value_usd']:,.0f}",
+            f"{h['pct_val']:.2f}%",
+        )
+    console.print(table)
+
+
+@main.command()
+def warm():
+    """Pre-fetch every tracked manager's latest 13F and map all CUSIPs to
+    tickers, so the dashboard's first consensus/holders load is instant.
+
+    The slow part of a cold start is OpenFIGI's keyless tier (3s per
+    batch of CUSIPs); running this once - or nightly from cron/Task
+    Scheduler - moves that wait out of the browser. Safe to re-run any
+    time: everything already cached is skipped.
+    """
+    from .tickers import CusipTickerResolver
+
+    client = EdgarClient(_get_user_agent())
+    cache = FilingCache()
+    console.print(f"[dim]Warming {len(set(FAMOUS_INVESTORS.values()))} managers' latest 13F holdings...[/dim]")
+    portfolios = fetch_latest_portfolios(client, FAMOUS_INVESTORS, cache=cache)
+    for p in portfolios:
+        console.print(f"  {p.label:<14} {p.period_of_report or '?'}  {len(p.positions):>4} positions")
+
+    all_cusips = sorted({c for p in portfolios for c in p.positions})
+    resolver = CusipTickerResolver()
+    console.print(
+        f"[dim]Mapping {len(all_cusips)} CUSIPs to tickers (already-cached "
+        f"answers are free; new ones hit OpenFIGI's keyless tier at ~3s per 100)...[/dim]"
+    )
+    tickers = resolver.resolve(all_cusips)
+    mapped = sum(1 for t in tickers.values() if t)
+    console.print(
+        f"[green]Warm.[/green] {len(portfolios)} portfolios cached, "
+        f"{mapped}/{len(all_cusips)} CUSIPs mapped to tickers."
+    )
+
+
 @main.command()
 def mcp():
     """Run the MCP tool server (stdio) so AI agents can use this terminal.

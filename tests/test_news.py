@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import responses
 
-from edgar13f.news import MARKET_FEEDS, TICKER_FEED_URL, NewsClient, _parse_rss
+from edgar13f.news import MARKET_FEEDS, NewsClient, _parse_rss
 
 RSS_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel><title>feed</title>

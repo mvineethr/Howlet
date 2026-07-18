@@ -104,6 +104,57 @@ def build_server(user_agent: str):
         return views.insiders_view(svc, symbol, filings=filings)
 
     @server.tool()
+    def search_filing_text(
+        query: str, forms: Optional[list[str]] = None, limit: int = 20
+    ) -> dict:
+        """Full-text search across the CONTENT of all EDGAR filings
+        (2001-present, official SEC index). Finds every filing that
+        mentions a phrase - quote it for exact match. Optional `forms`
+        filter, e.g. ["8-K"] or ["10-K", "10-Q"]. Relevance-ranked."""
+        return views.fulltext_search_view(svc, query, forms=forms, limit=limit)
+
+    @server.tool()
+    def get_company_filings(
+        symbol: str, form: Optional[str] = None, limit: int = 20
+    ) -> dict:
+        """A company's recent SEC filings feed (8-K, 10-K/Q, DEF 14A,
+        Form 4, ...), newest first, with links. `form` filters to one
+        type, e.g. "8-K"."""
+        return views.company_filings_view(svc, symbol, form=form, limit=limit)
+
+    @server.tool()
+    def get_fund_holdings(symbol: str, top: int = 50) -> dict:
+        """What an ETF or mutual fund holds (e.g. 'ARKK', 'VOO'), from
+        its latest monthly NPORT-P filing: every position with balance,
+        value, and the fund's own weight %. ~60 day public lag. Unit
+        investment trusts (SPY) don't file NPORT and will error."""
+        return views.fund_view(svc, symbol, top=top)
+
+    @server.tool()
+    def get_fx_matrix(currencies: Optional[list[str]] = None) -> dict:
+        """FX cross-rate matrix (matrix[A][B] = units of B per 1 A) from
+        the ECB's official daily reference rates via Frankfurter -
+        keyless. Default currencies: USD EUR GBP JPY CHF CNY AUD CAD INR."""
+        return views.fx_matrix_view(currencies=currencies)
+
+    @server.tool()
+    def get_latest_filings() -> list[dict]:
+        """Each tracked manager's most recent 13F-HR filing (accession,
+        filing date, period). Compare accessions across calls to detect
+        brand-new quarterly filings the moment they land on EDGAR."""
+        return views.latest_filings_view(svc)
+
+    @server.tool()
+    def screen_insider_buys(symbols: list[str], filings_per_symbol: int = 8) -> dict:
+        """Scan a list of tickers for open-market insider BUYS (Form 4
+        code P) - the classic conviction signal. Returns every purchase
+        plus a per-symbol rollup sorted by most recent buy. First scan
+        of an uncached symbol is slow; cached afterwards."""
+        return views.insider_buys_view(
+            svc, symbols, filings_per_symbol=filings_per_symbol
+        )
+
+    @server.tool()
     def get_quote(symbols: list[str]) -> list[dict]:
         """Quotes for stock/index/futures/crypto/FX symbols (Yahoo
         conventions: AAPL, BRK-B, ^GSPC, CL=F, BTC-USD, EURUSD=X)."""

@@ -457,6 +457,111 @@ def test_insiders_endpoint_404_for_unknown_ticker(api, services):
     assert resp.status_code == 404
 
 
+# A minimal Form 4 with one open-market purchase (code P) - the shape the
+# insider-buy screen exists to find. Structure mirrors the captured AAPL
+# filing in test_form4.py.
+PURCHASE_FORM4_XML = b"""<?xml version="1.0"?>
+<ownershipDocument>
+    <issuer><issuerCik>0000019617</issuerCik><issuerTradingSymbol>JPM</issuerTradingSymbol></issuer>
+    <reportingOwner>
+        <reportingOwnerId>
+            <rptOwnerCik>0001195817</rptOwnerCik>
+            <rptOwnerName>DIMON JAMES</rptOwnerName>
+        </reportingOwnerId>
+        <reportingOwnerRelationship>
+            <isDirector>true</isDirector>
+            <isOfficer>true</isOfficer>
+            <officerTitle>Chairman &amp; CEO</officerTitle>
+        </reportingOwnerRelationship>
+    </reportingOwner>
+    <nonDerivativeTable>
+        <nonDerivativeTransaction>
+            <securityTitle><value>Common Stock</value></securityTitle>
+            <transactionDate><value>2026-07-01</value></transactionDate>
+            <transactionCoding><transactionCode>P</transactionCode></transactionCoding>
+            <transactionAmounts>
+                <transactionShares><value>5000</value></transactionShares>
+                <transactionPricePerShare><value>210.50</value></transactionPricePerShare>
+                <transactionAcquiredDisposedCode><value>A</value></transactionAcquiredDisposedCode>
+            </transactionAmounts>
+            <postTransactionAmounts>
+                <sharesOwnedFollowingTransaction><value>1000000</value></sharesOwnedFollowingTransaction>
+            </postTransactionAmounts>
+            <ownershipNature><directOrIndirectOwnership><value>D</value></directOrIndirectOwnership></ownershipNature>
+        </nonDerivativeTransaction>
+    </nonDerivativeTable>
+</ownershipDocument>"""
+
+
+def test_company_filings_feed_lists_all_forms_with_links(api, services):
+    services.fundamentals.ticker_to_cik.return_value = "0000320193"
+    services.fundamentals.company_name.return_value = "Apple Inc."
+    f = _filing("0000000000-26-000009", date(2026, 6, 30))
+    f.form = "8-K"
+    f.primary_doc = "xslF345X06/doc.htm"  # xsl prefix must be stripped
+    services.edgar.list_filings.return_value = [f]
+
+    data = api.get("/api/filings/AAPL?limit=5").get_json()
+    services.edgar.list_filings.assert_called_once_with("0000320193", None, limit=5)
+    row = data["filings"][0]
+    assert row["form"] == "8-K"
+    assert row["url"].endswith("/doc.htm")
+    assert "xslF345X06" not in row["url"]
+
+    api.get("/api/filings/AAPL?form=8-K")
+    assert services.edgar.list_filings.call_args[0][1] == "8-K"
+
+
+def test_filing_alerts_lists_latest_accessions_and_skips_failures(api, services):
+    from edgar13f.presets import FAMOUS_INVESTORS
+
+    unique_ciks = sorted(set(FAMOUS_INVESTORS.values()))
+    broken_cik = unique_ciks[0]
+
+    def latest(cik, limit=1):
+        if cik == broken_cik:
+            raise RuntimeError("SEC hiccup for this one manager")
+        return [_filing(f"acc-{cik}", date(2026, 3, 31))]
+
+    services.edgar.list_13f_filings.side_effect = latest
+
+    data = api.get("/api/filing-alerts").get_json()
+    # One row per unique CIK except the broken one - which must not 500.
+    assert len(data) == len(unique_ciks) - 1
+    row = data[0]
+    assert row["form"] == "13F-HR"
+    assert row["accession_number"].startswith("acc-")
+    assert row["filing_date"] == "2026-05-15"
+    assert all(r["cik"] != broken_cik for r in data)
+
+
+def test_insider_buys_endpoint_screens_for_p_codes(api, services):
+    from tests.test_form4 import FILING, SAMPLE_FORM4_XML
+
+    # JPM's filing has a real P buy; AAPL's has only vest/withholding rows.
+    services.fundamentals.ticker_to_cik.side_effect = (
+        lambda s: {"JPM": "0000019617", "AAPL": "0000320193"}.get(s.upper())
+    )
+    services.edgar.list_filings.return_value = [FILING]
+    xml_by_call = iter([PURCHASE_FORM4_XML, SAMPLE_FORM4_XML])
+    services.edgar._get.side_effect = (
+        lambda url: type("R", (), {"content": next(xml_by_call)})()
+    )
+
+    data = api.get("/api/insider-buys?symbols=JPM,AAPL,NOPE&filings=5").get_json()
+    assert data["symbols_scanned"] == ["JPM", "AAPL"]  # NOPE has no SEC filer
+    assert len(data["buys"]) == 1
+    buy = data["buys"][0]
+    assert buy["symbol"] == "JPM"
+    assert buy["insider"] == "DIMON JAMES"
+    assert buy["shares"] == 5000
+    assert buy["value_usd"] == 5000 * 210.50
+    assert data["summary"] == [{
+        "symbol": "JPM", "buy_count": 1, "total_shares": 5000.0,
+        "total_value_usd": 5000 * 210.50, "latest_date": "2026-07-01",
+    }]
+
+
 def test_position_history_walks_quarters_chronologically(api, services):
     current = _filing("0000000000-26-000002", date(2026, 3, 31))
     prior = _filing("0000000000-25-000001", date(2025, 12, 31))

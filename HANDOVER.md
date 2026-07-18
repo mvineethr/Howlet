@@ -6,6 +6,59 @@ Newest session first.
 
 ---
 
+# Session 2026-07-17 (part 4): the full review slate - 6 features + release prep
+
+## What was asked
+
+"Do that all" after a thorough project review: every improvement and
+every addition from the review, then a list of what only the user can
+do (accounts).
+
+## What was built (each verified live before moving on)
+
+- **Quick wins**: `edgar13f warm` (14 portfolios + 1275 CUSIPs mapped in
+  one pre-fetch run, verified), EXPORT/IMPORT full-state JSON backup in
+  the tab bar, CRYPTO TOP 20 home block, ⤓ CSV buttons (portfolio/
+  changes/consensus/EQS), ruff in CI (3 findings fixed), 2 HTML smoke
+  tests. The "newsItemsHtml `<\\span>` typo" from the review turned out
+  not to exist - review claim was wrong, nothing to fix.
+- **Insider-buy screening**: `_symbol_form4_transactions` helper +
+  `insider_buys_view`; CLI `insider-buys`, `/api/insider-buys`, MCP
+  `screen_insider_buys`, watchlist-scoped block. Live verify found a
+  real signal: OXY President/CEO Jackson bought 4,770 sh @ $52.38
+  (2026-06-23); AAPL/JPM/INTC/BA correctly zero.
+- **13F filing alerts**: `latest_filings_view` (per-preset newest
+  accession, one broken manager can't kill the poll - tested), topbar
+  bell polls every 30 min, baseline-then-diff against
+  `edgar13f_seen_filings_v1`, optional desktop notifications, MARK ALL
+  SEEN. Verified by rewinding Buffett's seen accession live - badge lit
+  with his real Q1 filing, dismiss restored state.
+- **EDGAR full-text search** (`fulltext.py`, efts.sec.gov) + **company
+  filings feed** (list_filings generalized to form_type=None; new
+  optional `form` field on FilingSummary). CLI `fts`/`filings`, two MCP
+  tools, SEC FILINGS block. Both verified live (AAPL 8-Ks; phrase
+  search returns real hits with working archive links).
+- **FX matrix** (`fx.py`): Frankfurter/ECB - NOTE the old
+  api.frankfurter.app domain 301s; use api.frankfurter.dev/v1. Cross
+  rates derived from one USD-based call, 1h cache. Verified EUR->JPY
+  185.65 against tape (162.35 x 1.1435 ✓).
+- **N-PORT fund holdings** (`nport.py`): company_tickers_mf.json ->
+  (trust CIK, seriesId); browse-edgar filtered BY SERIES ID (the trust
+  CIK alone mixes its funds); primary_doc.xml parsed by local name.
+  ARKK verified live ($6.48B net, Tesla 9.74% top). SPY/UITs correctly
+  raise a clear LookupError - they don't file NPORT-P.
+- **Release prep**: v0.8.0, CHANGELOG, README/CLAUDE.md updated (also
+  fixed stale "KLineChart loaded from jsDelivr CDN" claim - it's
+  vendored), dist rebuilt + twine-checked.
+
+## State
+
+145 offline tests green, ruff clean, all 7 new dashboard blocks
+verified rendering live data in the browser, zero console errors.
+MCP: 27 tools.
+
+---
+
 # Session 2026-07-17 (part 3): crypto screen, Federal Register, cleaner topbar
 
 ## What was asked

@@ -431,7 +431,7 @@ def test_news_endpoint_routes_symbols_to_ticker_news(api, services):
 
 
 def test_insiders_endpoint_parses_form4s_and_summarizes(api, services):
-    from tests.test_form4 import FILING, SAMPLE_FORM4_XML
+    from test_form4 import FILING, SAMPLE_FORM4_XML
 
     services.fundamentals.ticker_to_cik.return_value = "0000320193"
     services.fundamentals.company_name.return_value = "Apple Inc."
@@ -536,7 +536,7 @@ def test_filing_alerts_lists_latest_accessions_and_skips_failures(api, services)
 
 
 def test_insider_buys_endpoint_screens_for_p_codes(api, services):
-    from tests.test_form4 import FILING, SAMPLE_FORM4_XML
+    from test_form4 import FILING, SAMPLE_FORM4_XML
 
     # JPM's filing has a real P buy; AAPL's has only vest/withholding rows.
     services.fundamentals.ticker_to_cik.side_effect = (

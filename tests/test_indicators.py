@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from edgar13f.indicators import (
+from edgar.indicators import (
     bollinger_bands,
     ema,
     macd,

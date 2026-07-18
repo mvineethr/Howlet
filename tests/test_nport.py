@@ -6,9 +6,9 @@ import json
 
 import responses
 
-from edgar13f import nport
-from edgar13f.client import EdgarClient
-from edgar13f.nport import (
+from edgar import nport
+from edgar.client import EdgarClient
+from edgar.nport import (
     MF_TICKERS_URL,
     get_fund_holdings,
     list_nport_accessions,

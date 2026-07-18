@@ -1,18 +1,18 @@
-"""Command-line interface for edgar13f.
+"""Command-line interface for Edgar.
 
 Examples:
     export EDGAR_USER_AGENT="Vineeth M your-email@example.com"
 
-    edgar13f search berkshire
-    edgar13f holdings buffett
-    edgar13f holdings 1067983 --limit 1
-    edgar13f holdings buffett --csv buffett_q1.csv
-    edgar13f diff buffett
-    edgar13f diff buffett --csv buffett_changes.csv
-    edgar13f quote AAPL BRK-B ^GSPC
-    edgar13f news --symbol AAPL
-    edgar13f consensus
-    edgar13f dashboard
+    edgar search berkshire
+    edgar holdings buffett
+    edgar holdings 1067983 --limit 1
+    edgar holdings buffett --csv buffett_q1.csv
+    edgar diff buffett
+    edgar diff buffett --csv buffett_changes.csv
+    edgar quote AAPL BRK-B ^GSPC
+    edgar news --symbol AAPL
+    edgar consensus
+    edgar dashboard
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ def _resolve_cik(identifier: str) -> str:
 
 @click.group()
 def main():
-    """edgar13f - free CLI for SEC 13F institutional holdings data."""
+    """Edgar - free CLI for SEC 13F institutional holdings data."""
 
 
 @main.command()
@@ -72,7 +72,7 @@ def main():
 def search(name: str):
     """Search EDGAR for a manager/fund CIK by name.
 
-    Example: edgar13f search berkshire
+    Example: edgar search berkshire
     """
     client = EdgarClient(_get_user_agent())
     results = client.search_company_cik(name)
@@ -230,7 +230,7 @@ def diff(identifier: str, csv_path: str | None, show_unchanged: bool):
 def quote(symbols: tuple[str, ...]):
     """Live-ish quotes from Yahoo Finance's free endpoint (no API key).
 
-    Example: edgar13f quote AAPL BRK-B ^GSPC BTC-USD
+    Example: edgar quote AAPL BRK-B ^GSPC BTC-USD
     """
     from .market import YahooMarketClient
 
@@ -266,8 +266,8 @@ def news(symbols: tuple[str, ...], limit: int):
     """Latest market headlines from free RSS feeds (Yahoo/CNBC/MarketWatch/SEC).
 
     Examples:
-        edgar13f news
-        edgar13f news --symbol AAPL --symbol MSFT
+        edgar news
+        edgar news --symbol AAPL --symbol MSFT
     """
     from .news import NewsClient
 
@@ -343,7 +343,7 @@ def consensus(min_managers: int, limit: int, csv_path: str | None):
 def facts(symbol: str, years: int):
     """Annual fundamentals from SEC XBRL company facts (10-K data).
 
-    Example: edgar13f facts AAPL
+    Example: edgar facts AAPL
     """
     from .fundamentals import FundamentalsClient
 
@@ -391,7 +391,7 @@ def history(identifier: str, query: str, quarters: int):
 
     QUERY is a ticker (AAPL), a raw CUSIP, or an issuer-name substring.
 
-    Example: edgar13f history buffett AAPL --quarters 12
+    Example: edgar history buffett AAPL --quarters 12
     """
     from .views import Services, position_history_view
 
@@ -435,7 +435,7 @@ def insiders(symbol: str, filings: int, show_all: bool):
     grants, RSU vests, and tax withholding are noise for this signal.
     Use --all to see everything.
 
-    Example: edgar13f insiders AAPL
+    Example: edgar insiders AAPL
     """
     from .views import Services, insiders_view
 
@@ -497,7 +497,7 @@ def insiders(symbol: str, filings: int, show_all: bool):
 def holders(symbol: str):
     """Which tracked famous managers hold a ticker (Bloomberg HDS-style).
 
-    Example: edgar13f holders AAPL
+    Example: edgar holders AAPL
     """
     from .views import Services, holders_view
 
@@ -537,7 +537,7 @@ def insider_buys(symbols: tuple[str, ...], filings: int):
     one. First scan of an uncached symbol costs ~FILINGS SEC requests;
     everything is disk-cached afterwards.
 
-    Example: edgar13f insider-buys AAPL MSFT NVDA JPM --filings 10
+    Example: edgar insider-buys AAPL MSFT NVDA JPM --filings 10
     """
     from .views import Services, insider_buys_view
 
@@ -599,8 +599,8 @@ def fts(query: str, forms: str | None, limit: int):
 
     Quote a phrase for exact match. Examples:
 
-        edgar13f fts '"supply chain disruption"' --forms 8-K
-        edgar13f fts '"artificial intelligence" datacenter' --forms 10-K
+        edgar fts '"supply chain disruption"' --forms 8-K
+        edgar fts '"artificial intelligence" datacenter' --forms 10-K
     """
     from .views import Services, fulltext_search_view
 
@@ -630,7 +630,7 @@ def fts(query: str, forms: str | None, limit: int):
 def filings(symbol: str, form: str | None, limit: int):
     """A company's recent SEC filings feed, newest first.
 
-    Example: edgar13f filings AAPL --form 8-K
+    Example: edgar filings AAPL --form 8-K
     """
     from .views import Services, company_filings_view
 
@@ -661,7 +661,7 @@ def fund(symbol: str, top: int, csv_path: str | None):
     Monthly filings, ~60 day public lag, with the fund's own weight
     percentages. Unit investment trusts (SPY) don't file NPORT-P.
 
-    Example: edgar13f fund ARKK
+    Example: edgar fund ARKK
     """
     from .views import Services, fund_view
 
@@ -744,9 +744,9 @@ def mcp():
     Exposes portfolios, Q/Q changes, consensus, holders, quotes, charts,
     fundamentals, news, and world markets as MCP tools. Setup:
 
-        claude mcp add edgar13f -e EDGAR_USER_AGENT="You you@example.com" -- edgar13f mcp
+        claude mcp add edgar -e EDGAR_USER_AGENT="You you@example.com" -- edgar mcp
 
-    Requires: pip install "edgar13f[mcp]"
+    Requires: pip install "edgar[mcp]"
     """
     ua = _get_user_agent()
     try:
@@ -770,7 +770,7 @@ def dashboard(host: str, port: int):
 
     ua = _get_user_agent()
     console.print(
-        f"[bold]EDGAR13F TERMINAL[/bold] starting at "
+        f"[bold]EDGAR TERMINAL[/bold] starting at "
         f"[blue underline]http://{host}:{port}[/blue underline]  (Ctrl+C to stop)"
     )
     run_dashboard(ua, host=host, port=port)

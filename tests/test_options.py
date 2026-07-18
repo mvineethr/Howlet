@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from edgar13f.options import OptionsClient
+from edgar.options import OptionsClient
 
 
 def _fake_resp(payload: dict):

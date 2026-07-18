@@ -12,7 +12,7 @@ import pytest
 import requests
 import responses
 
-from edgar13f.client import EdgarClient
+from edgar.client import EdgarClient
 
 SAMPLE_INFO_TABLE_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
 <informationTable xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">
@@ -219,7 +219,7 @@ def test_list_13f_filings_paginates_into_files_when_recent_is_short(client: Edga
 
 @responses.activate
 def test_get_retries_on_429_then_succeeds(client: EdgarClient, monkeypatch):
-    monkeypatch.setattr("edgar13f.client.time.sleep", lambda seconds: None)
+    monkeypatch.setattr("edgar.client.time.sleep", lambda seconds: None)
     responses.add(responses.GET, "https://example.test/thing", status=429)
     responses.add(responses.GET, "https://example.test/thing", json={"ok": True}, status=200)
 
@@ -231,7 +231,7 @@ def test_get_retries_on_429_then_succeeds(client: EdgarClient, monkeypatch):
 
 @responses.activate
 def test_get_raises_after_exhausting_retries(client: EdgarClient, monkeypatch):
-    monkeypatch.setattr("edgar13f.client.time.sleep", lambda seconds: None)
+    monkeypatch.setattr("edgar.client.time.sleep", lambda seconds: None)
     for _ in range(4):  # 1 initial attempt + 3 retries, all failing
         responses.add(responses.GET, "https://example.test/thing", status=503)
 
@@ -256,7 +256,7 @@ def test_get_retries_on_connection_reset_then_succeeds(client: EdgarClient, monk
     """SEC resets stale keep-alive connections on long-lived sessions
     (WinError 10054, seen live from the dashboard's shared client); the
     retry must reissue the request instead of propagating immediately."""
-    monkeypatch.setattr("edgar13f.client.time.sleep", lambda seconds: None)
+    monkeypatch.setattr("edgar.client.time.sleep", lambda seconds: None)
     responses.add(
         responses.GET, "https://example.test/thing",
         body=requests.ConnectionError("Connection aborted (10054)"),
@@ -270,7 +270,7 @@ def test_get_retries_on_connection_reset_then_succeeds(client: EdgarClient, monk
 
 @responses.activate
 def test_get_raises_connection_error_after_exhausting_retries(client: EdgarClient, monkeypatch):
-    monkeypatch.setattr("edgar13f.client.time.sleep", lambda seconds: None)
+    monkeypatch.setattr("edgar.client.time.sleep", lambda seconds: None)
     for _ in range(4):  # 1 initial attempt + 3 retries, all resets
         responses.add(
             responses.GET, "https://example.test/thing",

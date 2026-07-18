@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import date
 from unittest.mock import MagicMock
 
-from edgar13f.cache import FilingCache, cached_information_table
-from edgar13f.models import FilingSummary, Holding
+from edgar.cache import FilingCache, cached_information_table
+from edgar.models import FilingSummary, Holding
 
 FILING = FilingSummary(
     cik="0001067983",

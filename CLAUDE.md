@@ -1,11 +1,11 @@
-# CLAUDE.md - dev brief for edgar13f
+# CLAUDE.md - dev brief for Edgar
 
 ## What this is
 
 A free, no-API-key, open-source Bloomberg-style terminal built on SEC
 EDGAR 13F data ("what is Warren Buffett buying"), grown into a full
-market terminal: web dashboard (`edgar13f dashboard`), CLI, Python
-library, and an MCP server (`edgar13f mcp`, 27 tools) so any AI agent
+market terminal: web dashboard (`edgar dashboard`), CLI, Python
+library, and an MCP server (`edgar mcp`, 27 tools) so any AI agent
 can drive it. Everything is verified live against the real APIs, not
 just offline mocks - that habit has caught a real bug almost every
 session (see Gotchas).
@@ -14,7 +14,7 @@ See `HANDOVER.md` for the full session-by-session history of what was
 built, why, and what broke along the way. `README.md` is the user-facing
 doc. Tests: `pytest tests/` - all offline/mocked.
 
-## Module map (src/edgar13f/)
+## Module map (src/edgar/)
 
 | Module | What it does |
 | --- | --- |
@@ -42,7 +42,7 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 | `yahoo_auth.py` | Yahoo cookie+crumb workaround for walled endpoints; consumers must degrade, never raise |
 | `views.py` | Shared JSON view layer - Flask endpoints AND MCP tools both wrap these |
 | `dashboard.py` | Flask wiring only; UI lives in `dashboard.html` (single file, vanilla JS) |
-| `mcp_server.py` | FastMCP stdio server, 21 tools (optional dep: `pip install "edgar13f[mcp]"`) |
+| `mcp_server.py` | FastMCP stdio server, 21 tools (optional dep: `pip install "edgar[mcp]"`) |
 
 ## Hard rules
 
@@ -115,7 +115,7 @@ doc. Tests: `pytest tests/` - all offline/mocked.
   as UTC midnight, so US timezones render the previous day.
 - Docker Desktop here sometimes evicts freshly built images; rebuild.
 
-## Caches (all under `~/.edgar13f/`)
+## Caches (all under `~/.edgar/`)
 
 `holdings/` (by accession, immutable), `form4/` (same), `cusip_tickers.json` (forever;
 network failures are NOT cached), `screener_cache.json` (per ticker per
@@ -126,7 +126,7 @@ day). Browser localStorage holds watchlists, personal portfolio, layout.
 Working and verified live: **customizable HOME dashboard** (blank slate,
 "+ ADD BLOCK" widget picker with 12 block types, "+ TAB" user tabs,
 per-block resize toggles (wide/tall), named layout snapshots
-(SAVE/LOAD/DEL in the tab bar, `edgar13f_layouts_v1`), multiple named
+(SAVE/LOAD/DEL in the tab bar, `edgar_layouts_v1`), multiple named
 watchlists with scoped news/events, all in localStorage,
 "RESTORE CLASSIC LAYOUT" one-click preset), manager portfolios w/ live
 quotes, Q/Q changes, consensus, holders (HDS), fundamentals (FA), DES
@@ -146,7 +146,7 @@ search** (CLI `fts`, `/api/fulltext`) + **company filings feed** (CLI
 `filings`, `/api/filings`, SEC FILINGS block), **N-PORT fund holdings**
 (CLI `fund`, `/api/fund`, ETF/FUND HOLDINGS block; ARKK verified live -
 UITs like SPY correctly error), **FX cross-rate matrix** (Frankfurter/
-ECB, `/api/fx`, dashboard block), **CRYPTO TOP 20 block**, **`edgar13f
+ECB, `/api/fx`, dashboard block), **CRYPTO TOP 20 block**, **`edgar
 warm`** cache pre-fetcher, **EXPORT/IMPORT state backup**, CSV export
 buttons on the main tables, ruff in CI + HTML smoke tests, MCP
 server with 27 tools, GitHub Actions CI, Docker. Presets: 14 tracked
@@ -161,7 +161,7 @@ error clearly, never exercised).
 
 1. **Publish** - the only remaining step needs the user's accounts:
    create the GitHub repo + push (CI will run then), and
-   `twine upload dist/edgar13f-0.8.0*` to PyPI. CHANGELOG, version
+   `twine upload dist/edgar-0.8.0*` to PyPI. CHANGELOG, version
    0.8.0, sdist+wheel (twine-checked), and the local git history are
    all done.
 2. **N-PORT depth** - disk-cache parsed NPORT filings by accession
@@ -169,7 +169,7 @@ error clearly, never exercised).
    months, or fund-vs-13F overlap views.
 3. **Finer-grained EDGAR locking** - `edgar_lock` serializes ALL EDGAR
    access; a cold consensus load still blocks the other EDGAR-backed
-   panels (mitigated day-to-day by `edgar13f warm`).
+   panels (mitigated day-to-day by `edgar warm`).
 
 ## Working rules
 

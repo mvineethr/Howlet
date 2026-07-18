@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>EDGAR13F TERMINAL</title>
+<title>EDGAR TERMINAL</title>
 <!-- KLineChart: Apache-2.0 licensed candlestick charting with ~30 built-in
      indicators and drawing overlays, no paywall, fed by our own data.
      Vendored into the package (static/klinecharts.min.js + its LICENSE)
@@ -336,7 +336,7 @@
 <body>
 
 <div id="topbar">
-  <span id="brand">EDGAR13F <span class="live">&#9679;</span> TERMINAL</span>
+  <span id="brand">EDGAR <span class="live">&#9679;</span> TERMINAL</span>
   <input id="cmd" autocomplete="off">
   <button id="go">GO &lt;GO&gt;</button>
   <span id="alerts" title="13F filing alerts: click to enable browser notifications and review new filings">&#128276;</span>
@@ -583,7 +583,7 @@
 <div class="screen" id="screen-help">
   <div id="help-wrap">
     <h2 id="about">ABOUT</h2>
-    <p>EDGAR13F is a free, open-source market terminal in the Bloomberg style. It answers
+    <p>EDGAR is a free, open-source market terminal in the Bloomberg style. It answers
        "what are famous investors buying?" using public SEC filings, and adds live-ish
        quotes, charts, fundamentals, news, and economic data on top - all from free
        sources, with no API keys and no subscription. It's laid out like a trading
@@ -704,7 +704,7 @@
        &bull; EQS is not the full S&amp;P 500 - there's no free, reliable, no-key source for live index membership this project wants to depend on. It's a hand-picked large-cap universe; point the dashboard/MCP tool at your own ticker list for anything else.</p>
     <h2>PLUG THIS INTO YOUR AI</h2>
     <p>Everything on these screens is also exposed as MCP tools:
-       <span class="cmd-ex">edgar13f mcp</span> - see the README for Claude Code / Claude Desktop setup.</p>
+       <span class="cmd-ex">edgar mcp</span> - see the README for Claude Code / Claude Desktop setup.</p>
     <h2>SOURCES</h2>
     <p>SEC EDGAR (13F holdings, XBRL fundamentals) &middot; OpenFIGI (CUSIP&rarr;ticker) &middot;
        Yahoo Finance (quotes/charts) &middot; Yahoo/CNBC/MarketWatch/SEC RSS (news) &middot;
@@ -1256,7 +1256,7 @@ async function loadSecNews(symbol) {
 /* ---------- MKTS screen ---------- */
 /* STOCKS | CRYPTO toggle - the two live in separate spaces, not mixed.
    The chosen side is remembered across sessions. */
-const MKTS_MODE_KEY = "edgar13f_mkts_mode";
+const MKTS_MODE_KEY = "edgar_mkts_mode";
 function getMktsMode() {
   return localStorage.getItem(MKTS_MODE_KEY) === "crypto" ? "crypto" : "stocks";
 }
@@ -1391,7 +1391,7 @@ async function loadMy() {
 /* ==================== customizable dashboard (HOME) ==================== */
 
 /* ---- multiple named watchlists ---- */
-const WATCHLISTS_KEY = "edgar13f_watchlists_v1";
+const WATCHLISTS_KEY = "edgar_watchlists_v1";
 function getWatchlists() {
   try {
     const raw = JSON.parse(localStorage.getItem(WATCHLISTS_KEY) || "null");
@@ -1399,7 +1399,7 @@ function getWatchlists() {
   } catch (e) {}
   // Migrate the old single watchlist into the named store.
   let legacy = [];
-  try { legacy = JSON.parse(localStorage.getItem("edgar13f_watchlist") || "[]"); } catch (e) {}
+  try { legacy = JSON.parse(localStorage.getItem("edgar_watchlist") || "[]"); } catch (e) {}
   const initial = { "default": Array.isArray(legacy) && legacy.length ? legacy : ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA", "^GSPC", "BTC-USD"] };
   localStorage.setItem(WATCHLISTS_KEY, JSON.stringify(initial));
   return initial;
@@ -1409,7 +1409,7 @@ function getWL(name) { return getWatchlists()[name] || []; }
 function setWL(name, symbols) { const all = getWatchlists(); all[name] = symbols; saveWatchlists(all); }
 
 /* ---- layout store: tabs of widgets ---- */
-const LAYOUT_KEY = "edgar13f_layout_v1";
+const LAYOUT_KEY = "edgar_layout_v1";
 function getLayout() {
   try {
     const raw = JSON.parse(localStorage.getItem(LAYOUT_KEY) || "null");
@@ -1422,7 +1422,7 @@ function saveLayout(layout) { localStorage.setItem(LAYOUT_KEY, JSON.stringify(la
 let layout = null; // initialized in boot
 
 /* Named layout snapshots ("layout memory") - single user, localStorage. */
-const SAVED_LAYOUTS_KEY = "edgar13f_layouts_v1";
+const SAVED_LAYOUTS_KEY = "edgar_layouts_v1";
 function getSavedLayouts() {
   try {
     const d = JSON.parse(localStorage.getItem(SAVED_LAYOUTS_KEY) || "{}");
@@ -2058,7 +2058,7 @@ async function loadEco() {
 }
 
 /* ---------- PF (personal portfolio risk) ---------- */
-const PF_KEY = "edgar13f_pf_holdings";
+const PF_KEY = "edgar_pf_holdings";
 function getPfHoldings() {
   try {
     const raw = JSON.parse(localStorage.getItem(PF_KEY) || "null");
@@ -2117,7 +2117,7 @@ async function loadPF() {
    Polls /api/filing-alerts and compares accession numbers against the
    last ones this browser acknowledged. First poll baselines silently;
    afterwards a changed accession = a genuinely new quarterly filing. */
-const SEEN_FILINGS_KEY = "edgar13f_seen_filings_v1";
+const SEEN_FILINGS_KEY = "edgar_seen_filings_v1";
 let newFilings = [];
 const notifiedAccessions = new Set(); // per-session, avoid duplicate popups
 
@@ -2299,12 +2299,12 @@ async function boot() {
       const state_ = {};
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && k.startsWith("edgar13f_")) state_[k] = localStorage.getItem(k);
+        if (k && k.startsWith("edgar_")) state_[k] = localStorage.getItem(k);
       }
       const blob = new Blob([JSON.stringify(state_, null, 1)], { type: "application/json" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = "edgar13f-backup-" + new Date().toISOString().slice(0, 10) + ".json";
+      a.download = "edgar-backup-" + new Date().toISOString().slice(0, 10) + ".json";
       a.click();
       URL.revokeObjectURL(a.href);
       return;
@@ -2353,7 +2353,7 @@ async function boot() {
     loadWidget(w);
   });
 
-  // Restore a JSON backup made by EXPORT: replaces every edgar13f_* key.
+  // Restore a JSON backup made by EXPORT: replaces every edgar_* key.
   $("import-file").addEventListener("change", () => {
     const file = $("import-file").files[0];
     $("import-file").value = "";
@@ -2362,8 +2362,8 @@ async function boot() {
     reader.onload = () => {
       let data;
       try { data = JSON.parse(reader.result); } catch (err) { alert("Not a valid JSON backup."); return; }
-      const keys = Object.keys(data || {}).filter(k => k.startsWith("edgar13f_") && typeof data[k] === "string");
-      if (!keys.length) { alert("No edgar13f state found in that file."); return; }
+      const keys = Object.keys(data || {}).filter(k => k.startsWith("edgar_") && typeof data[k] === "string");
+      if (!keys.length) { alert("No Edgar state found in that file."); return; }
       if (!confirm(`Restore ${keys.length} settings (layouts, watchlists, portfolio) from "${file.name}"? Current state will be replaced.`)) return;
       keys.forEach(k => localStorage.setItem(k, data[k]));
       location.reload();

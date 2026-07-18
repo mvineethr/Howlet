@@ -2,9 +2,9 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "edgar13f-dashboard",
+      "name": "edgar-dashboard",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["-m", "edgar13f.cli", "dashboard", "--port", "8813"],
+      "runtimeArgs": ["-m", "edgar.cli", "dashboard", "--port", "8813"],
       "port": 8813,
       "env": {
         "EDGAR_USER_AGENT": "Vineeth Mudda vineethmudda@gmail.com"

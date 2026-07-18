@@ -1,8 +1,8 @@
-"""Bloomberg-terminal-style web dashboard for edgar13f.
+"""Bloomberg-terminal-style web dashboard for Edgar.
 
 Serves a single-page dark terminal UI (see `dashboard.html`) backed by a
 small JSON API. All data assembly lives in `views.py` (shared with the
-`edgar13f mcp` AI tool server); this module is just Flask wiring.
+`edgar mcp` AI tool server); this module is just Flask wiring.
 
 Everything stays free/keyless:
 
@@ -11,8 +11,8 @@ Everything stays free/keyless:
   - Yahoo Finance:  quotes, charts, world markets tape
   - RSS feeds:      Yahoo Finance / CNBC / MarketWatch / SEC news
 
-Run via `edgar13f dashboard` or:
-    from edgar13f.dashboard import run_dashboard
+Run via `edgar dashboard` or:
+    from edgar.dashboard import run_dashboard
     run_dashboard(user_agent="Jane Doe jane@example.com")
 """
 

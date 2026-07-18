@@ -9,12 +9,12 @@ real bug in essentially every session.
 1. Run the offline suite first: `pytest tests/`. Green tests are the entry
    ticket, not the finish line.
 2. Exercise the changed path against the REAL upstream:
-   - SEC paths: run the actual CLI (`edgar13f search berkshire`,
-     `edgar13f holdings buffett`, `edgar13f diff buffett`).
-   - Dashboard paths: start `edgar13f dashboard`, then check BOTH the JSON
+   - SEC paths: run the actual CLI (`edgar search berkshire`,
+     `edgar holdings buffett`, `edgar diff buffett`).
+   - Dashboard paths: start `edgar dashboard`, then check BOTH the JSON
      endpoint (`curl` the `/api/...` route) and the rendered screen in the
      browser preview.
-   - MCP paths: `call_tool(...)` against a running `edgar13f mcp`, don't
+   - MCP paths: `call_tool(...)` against a running `edgar mcp`, don't
      just import the module.
 3. Compare at least one number against an independent source you trust:
    a real 10-K figure, the SEC-reported filing total, or the user's own
@@ -50,7 +50,7 @@ stacked and removed, and the drawing overlay armed. That's the standard:
 real symbol, real bars, independent cross-check, user-level interaction.
 
 Counter-example that justifies the rule: in 2026-06-30, the very FIRST
-live run ever (`edgar13f search berkshire` via Docker) found that SEC's
+live run ever (`edgar search berkshire` via Docker) found that SEC's
 `output=atom` search returns Perl array refs as titles. Four offline tests
 had been green the whole time, because the mock XML was hand-built
 correctly. Live verification found in one command what the suite could

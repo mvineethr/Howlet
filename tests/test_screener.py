@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from edgar13f.fundamentals import FiscalYear
-from edgar13f.screener import ScreenerCache, ScreenRow, _build_row, _passes_filters
+from edgar.fundamentals import FiscalYear
+from edgar.screener import ScreenerCache, ScreenRow, _build_row, _passes_filters
 
 
 def test_build_row_computes_pe_market_cap_growth_and_margin():

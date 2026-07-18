@@ -1,4 +1,4 @@
-# HANDOVER - edgar13f
+# HANDOVER - edgar
 
 Session log for picking this project back up. See `CLAUDE.md` for the
 standing dev brief (what the tool is, current status, constraints).
@@ -16,7 +16,7 @@ do (accounts).
 
 ## What was built (each verified live before moving on)
 
-- **Quick wins**: `edgar13f warm` (14 portfolios + 1275 CUSIPs mapped in
+- **Quick wins**: `edgar warm` (14 portfolios + 1275 CUSIPs mapped in
   one pre-fetch run, verified), EXPORT/IMPORT full-state JSON backup in
   the tab bar, CRYPTO TOP 20 home block, ⤓ CSV buttons (portfolio/
   changes/consensus/EQS), ruff in CI (3 findings fixed), 2 HTML smoke
@@ -30,7 +30,7 @@ do (accounts).
 - **13F filing alerts**: `latest_filings_view` (per-preset newest
   accession, one broken manager can't kill the poll - tested), topbar
   bell polls every 30 min, baseline-then-diff against
-  `edgar13f_seen_filings_v1`, optional desktop notifications, MARK ALL
+  `edgar_seen_filings_v1`, optional desktop notifications, MARK ALL
   SEEN. Verified by rewinding Buffett's seen accession live - badge lit
   with his real Q1 filing, dismiss restored state.
 - **EDGAR full-text search** (`fulltext.py`, efts.sec.gov) + **company
@@ -74,7 +74,7 @@ space". Also remove the example-hint placeholder from the command box.
   in-memory TTL cache, degrades to ("", []). `crypto_view` +
   `/api/crypto` + MCP `get_crypto_markets`.
 - **MKTS STOCKS/CRYPTO toggle**: two modes in separate spaces, choice
-  remembered (`edgar13f_mkts_mode`). The old 5-symbol CRYPTO section
+  remembered (`edgar_mkts_mode`). The old 5-symbol CRYPTO section
   was removed from `MARKET_SECTIONS` (and its test updated to assert
   it's ABSENT). Crypto side: top-50 table w/ price, 24h %, mkt cap,
   volume, 24h range, "source: coingecko|coinpaprika" label.
@@ -121,7 +121,7 @@ top keyless candidates recorded in CLAUDE.md's next-features list).
   just for a resize.
 - **Named layout snapshots**: LAYOUTS: [select] SAVE/LOAD/DEL in the
   dashboard tab bar. SAVE deep-copies the whole layout (all tabs,
-  blocks, sizes) into `edgar13f_layouts_v1` under a prompted name;
+  blocks, sizes) into `edgar_layouts_v1` under a prompted name;
   LOAD replaces the live layout (with confirm); DEL removes a snapshot.
   All localStorage, consistent with watchlists/portfolio.
 
@@ -250,7 +250,7 @@ pre-publish items (CLAUDE.md cleanup, vendor KLineChart, CI).
 - **CLAUDE.md rewritten** from a session diary into a concise brief:
   module map, hard rules, gotchas list, status, roadmap. History lives
   here in HANDOVER.md only.
-- **KLineChart vendored** into `src/edgar13f/static/` (+ its Apache-2.0
+- **KLineChart vendored** into `src/edgar/static/` (+ its Apache-2.0
   LICENSE file); served via Flask's default /static/; no CDN at runtime.
   package-data updated.
 - **GitHub Actions CI** (.github/workflows/ci.yml): ubuntu+windows x
@@ -263,7 +263,7 @@ pre-publish items (CLAUDE.md cleanup, vendor KLineChart, CI).
     list), market news, Fed, yield curve, world markets. Widgets have
     remove x, config label, periodic refresh (60s watchlists, 300s news).
   - "+ TAB" creates named tabs (deletable except HOME).
-  - Multiple named watchlists (`edgar13f_watchlists_v1`, old single-list
+  - Multiple named watchlists (`edgar_watchlists_v1`, old single-list
     key migrated to "default"; MY screen now reads the "default" list so
     it stays in sync with home widgets).
 - **BACK button** on the DES chart header; `showScreen` records the
@@ -453,8 +453,8 @@ be, plus an MCP server for the "plug into AI" part.
   `buffett PORT`, `MKTS`, `WATCH`, `HELP`), five screens, clickable
   tickers everywhere, range-selectable SVG chart, watchlist in
   localStorage.
-- `mcp_server.py` + `edgar13f mcp` - FastMCP stdio server, 11 tools,
-  optional dep (`pip install "edgar13f[mcp]"`).
+- `mcp_server.py` + `edgar mcp` - FastMCP stdio server, 11 tools,
+  optional dep (`pip install "edgar[mcp]"`).
 - New CLI: `facts`, `holders`, `mcp`. Tests 37 -> 48, all offline.
 
 ## Live-found bug #3: day-change semantics
@@ -490,15 +490,15 @@ info and accurate news."
   price, prev close, 1-mo sparkline). All failures -> `None`, never raise.
 - `tickers.py` - `CusipTickerResolver`: OpenFIGI keyless mapping of 13F
   CUSIPs to Yahoo tickers, batches of 5 @ 3s, disk-cached forever in
-  `~/.edgar13f/cusip_tickers.json` (network failures NOT cached).
+  `~/.edgar/cusip_tickers.json` (network failures NOT cached).
 - `news.py` - RSS aggregation: Yahoo Finance (market + per-ticker), CNBC,
   MarketWatch, SEC press releases. Broken feeds skipped, deduped, sorted.
 - `consensus.py` - the old wishlist #1: cross-manager CUSIP overlap with
-  per-manager portfolio weights (`edgar13f consensus`).
+  per-manager portfolio weights (`edgar consensus`).
 - `cache.py` - old wishlist #2: holdings cached by accession number under
-  `~/.edgar13f/holdings/`; wired into CLI, dashboard, consensus.
+  `~/.edgar/holdings/`; wired into CLI, dashboard, consensus.
 - `dashboard.py` + `dashboard.html` - Flask JSON API + single-file dark
-  terminal UI (`edgar13f dashboard`, port 8813). World tape, portfolio w/
+  terminal UI (`edgar dashboard`, port 8813). World tape, portfolio w/
   live px + sparklines + weights, Q/Q changes, allocation bars, consensus
   panel, news panel scoped to held tickers. `.claude/launch.json` exists
   for the Claude Code preview panel.
@@ -549,8 +549,8 @@ working session, 2026-06-30.
 
 This scaffold was originally built offline with no network access, so
 nothing had ever round-tripped against real sec.gov servers. Built a
-`Dockerfile` + `.dockerignore`, then ran `edgar13f search berkshire` and
-`edgar13f holdings buffett` live via `docker run`.
+`Dockerfile` + `.dockerignore`, then ran `edgar search berkshire` and
+`edgar holdings buffett` live via `docker run`.
 
 **Found a real bug immediately:** `search_company_cik` parsed
 `output=atom` from `/cgi-bin/browse-edgar`, but SEC's atom feed has a
@@ -586,16 +586,16 @@ filings are collected.
 
 **Quarter-over-quarter diffing** - this was CLAUDE.md's #1 "actually
 interesting feature," so built it:
-- `src/edgar13f/diff.py::diff_holdings(prior, current)` - pure function,
+- `src/edgar/diff.py::diff_holdings(prior, current)` - pure function,
   no HTTP. Aggregates `Holding`s by CUSIP *within* each filing first
   (necessary: Berkshire's own 13F lists AAPL across 5 separate infoTable
   entries in one filing, split some other way internally), then compares
   the two aggregated snapshots and classifies each CUSIP as NEW / SOLD /
   INCREASED / DECREASED / UNCHANGED.
 - `HoldingChange` dataclass added to `models.py`.
-- `edgar13f diff <cik-or-preset>` CLI command, with `--csv` and
+- `edgar diff <cik-or-preset>` CLI command, with `--csv` and
   `--show-unchanged` (unchanged positions are hidden by default - noise).
-- Verified live: `edgar13f diff buffett` correctly diffed Berkshire's
+- Verified live: `edgar diff buffett` correctly diffed Berkshire's
   Q4 2025 -> Q1 2026 filings. Notably it correctly surfaced Alphabet
   (GOOGL/GOOG) and Lennar (LEN/LEN.B) as *two separate rows each* - these
   are genuinely different CUSIPs for different share classes, so that's
@@ -613,14 +613,14 @@ Went from 4 tests to 11, all offline/mocked, all passing:
 
 Run with:
 ```bash
-docker run --rm -v "$(pwd):/app" --entrypoint sh edgar13f:latest \
+docker run --rm -v "$(pwd):/app" --entrypoint sh edgar:latest \
   -c "pip install -q pytest responses && python -m pytest -v"
 ```
 (or locally: `pip install -e ".[dev]" && pytest -v`)
 
 ## Current state
 
-- Docker image builds clean: `docker build -t edgar13f:latest .`
+- Docker image builds clean: `docker build -t edgar:latest .`
 - 11/11 tests pass offline.
 - `search`, `holdings`, and `diff` all verified against the live SEC API
   this session, not just offline mocks.
@@ -634,7 +634,7 @@ From CLAUDE.md, one item remains:
   information table - still untested. `get_information_table` should
   raise a clear error on these (by design) rather than silently failing,
   but that path has never been exercised against a real old filing. If
-  picking this up: find an old 13F-HR (pre-~2013) via `edgar13f search`,
+  picking this up: find an old 13F-HR (pre-~2013) via `edgar search`,
   fetch its filing index live, and confirm the error message is actually
   useful rather than a raw parse traceback.
 
@@ -647,7 +647,7 @@ session since diffing is done):
    filings are immutable once filed, so repeated `diff`/`holdings` calls
    are needlessly re-fetching the same XML.
 3. Expand `presets.py` beyond the current 5 - verify each new CIK via
-   `edgar13f search` first, don't guess.
+   `edgar search` first, don't guess.
 4. If heading toward public release: GitHub Actions (lint + pytest on
    push), a CHANGELOG, PyPI publishing.
 

@@ -1,10 +1,11 @@
-# edgar13f
+# Edgar
 
 A free, no-API-key Python client + CLI + **Bloomberg-style terminal
-dashboard** for SEC EDGAR's **Form 13F** data — the quarterly filings that
-disclose what stocks institutional investors (Berkshire Hathaway, Pershing
-Square, etc.) hold — enriched with live-ish quotes and multi-source market
-news.
+dashboard** for SEC EDGAR data — starting from **Form 13F** (the
+quarterly filings that disclose what stocks institutional investors like
+Berkshire Hathaway and Pershing Square hold) and grown into a full
+market terminal: insider transactions, fund holdings, full-text filing
+search, live quotes, and multi-source market news.
 
 This is the same public, government-provided data source that apps like
 Blossom Social, GuruFocus, and WhaleWisdom use to show "what is Warren
@@ -60,72 +61,72 @@ https://www.sec.gov/os/webmaster-faq#developers. Generic strings like
 
 ```bash
 # Look up a manager's CIK by name
-edgar13f search berkshire
+edgar search berkshire
 
-# Show the latest holdings for a preset (see src/edgar13f/presets.py -
+# Show the latest holdings for a preset (see src/edgar/presets.py -
 # 14 tracked managers: buffett, burry, ackman, icahn, tepper, klarman,
 # loeb, dalio, druckenmiller, marks, lilu, einhorn, fundsmith, tigerglobal)
-edgar13f holdings buffett
-edgar13f holdings druckenmiller
-edgar13f holdings tepper
+edgar holdings buffett
+edgar holdings druckenmiller
+edgar holdings tepper
 
 # Or use a raw CIK directly
-edgar13f holdings 1067983
+edgar holdings 1067983
 
 # Export to CSV instead of printing a table
-edgar13f holdings buffett --csv buffett_latest.csv
+edgar holdings buffett --csv buffett_latest.csv
 
 # What changed since last quarter's filing? (new/sold/increased/decreased)
-edgar13f diff buffett
-edgar13f diff buffett --show-unchanged
-edgar13f diff buffett --csv buffett_changes.csv
+edgar diff buffett
+edgar diff buffett --show-unchanged
+edgar diff buffett --csv buffett_changes.csv
 
 # Which stocks do the tracked famous managers agree on right now?
-edgar13f consensus
-edgar13f consensus --min-managers 3 --csv consensus.csv
+edgar consensus
+edgar consensus --min-managers 3 --csv consensus.csv
 
 # Live-ish quotes from Yahoo Finance (works for stocks, indices, futures, crypto)
-edgar13f quote AAPL BRK-B ^GSPC BTC-USD
+edgar quote AAPL BRK-B ^GSPC BTC-USD
 
 # Market headlines (Yahoo Finance / CNBC / MarketWatch / SEC press releases)
-edgar13f news
-edgar13f news --symbol AAPL --symbol MSFT
+edgar news
+edgar news --symbol AAPL --symbol MSFT
 
 # Annual fundamentals from SEC XBRL (audited 10-K data)
-edgar13f facts AAPL
+edgar facts AAPL
 
 # Which tracked managers hold a ticker (Bloomberg HDS-style)
-edgar13f holders KO
+edgar holders KO
 
 # Form 4 insider transactions - who's actually buying/selling their own stock
-edgar13f insiders AAPL
-edgar13f insiders NVDA --filings 25 --all
+edgar insiders AAPL
+edgar insiders NVDA --filings 25 --all
 
 # One manager's stake in one name across quarters (watch Buffett trim AAPL)
-edgar13f history buffett AAPL --quarters 12
+edgar history buffett AAPL --quarters 12
 
 # Screen a whole list for open-market insider BUYS (the conviction signal)
-edgar13f insider-buys AAPL MSFT NVDA OXY JPM --filings 10
+edgar insider-buys AAPL MSFT NVDA OXY JPM --filings 10
 
 # What does an ETF actually hold? (latest monthly NPORT-P filing)
-edgar13f fund ARKK
-edgar13f fund VOO --csv voo_holdings.csv
+edgar fund ARKK
+edgar fund VOO --csv voo_holdings.csv
 
 # A company's recent SEC filings feed
-edgar13f filings AAPL --form 8-K
+edgar filings AAPL --form 8-K
 
 # Full-text search the CONTENT of every filing since 2001
-edgar13f fts '"supply chain disruption"' --forms 8-K
+edgar fts '"supply chain disruption"' --forms 8-K
 
 # Pre-fetch all tracked managers + ticker mappings (cron-able) so the
 # dashboard's first consensus/holders load is instant
-edgar13f warm
+edgar warm
 ```
 
 ## The terminal dashboard
 
 ```bash
-edgar13f dashboard          # then open http://127.0.0.1:8813
+edgar dashboard          # then open http://127.0.0.1:8813
 ```
 
 A Bloomberg-terminal-style dark dashboard in your browser, complete with
@@ -196,17 +197,17 @@ agent can use it as a tool belt — ask your AI "what did Buffett buy last
 quarter and how have those stocks done since?" and it can actually answer:
 
 ```bash
-pip install "edgar13f[mcp]"
+pip install "edgar[mcp]"
 
 # Claude Code
-claude mcp add edgar13f -e EDGAR_USER_AGENT="Your Name you@example.com" -- edgar13f mcp
+claude mcp add edgar -e EDGAR_USER_AGENT="Your Name you@example.com" -- edgar mcp
 ```
 
 Claude Desktop (`claude_desktop_config.json`):
 
 ```json
-{"mcpServers": {"edgar13f": {
-  "command": "edgar13f", "args": ["mcp"],
+{"mcpServers": {"edgar": {
+  "command": "edgar", "args": ["mcp"],
   "env": {"EDGAR_USER_AGENT": "Your Name you@example.com"}}}}
 ```
 
@@ -252,14 +253,14 @@ Not everything here has the same reliability. Know what you're standing on:
 
 ## Caching
 
-Parsed filings are cached under `~/.edgar13f/` keyed by accession number
+Parsed filings are cached under `~/.edgar/` keyed by accession number
 (filings never change once filed), and CUSIP→ticker answers are cached
 there too. Delete that directory to force a full refresh.
 
 Or use it as a library:
 
 ```python
-from edgar13f import EdgarClient, diff_holdings
+from edgar import EdgarClient, diff_holdings
 
 client = EdgarClient(user_agent="Your Name your-email@example.com")
 filings = client.list_13f_filings(cik="1067983", limit=2)
@@ -277,21 +278,21 @@ for change in diff_holdings(prior_holdings, current_holdings):
 ## Running with Docker
 
 ```bash
-docker build -t edgar13f:latest .
+docker build -t edgar:latest .
 
 docker run --rm -e EDGAR_USER_AGENT="Your Name your-email@example.com" \
-  edgar13f:latest search berkshire
+  edgar:latest search berkshire
 
 docker run --rm -e EDGAR_USER_AGENT="Your Name your-email@example.com" \
-  edgar13f:latest holdings buffett
+  edgar:latest holdings buffett
 
 # --csv writes inside the container; mount a volume to get the file out
 docker run --rm -e EDGAR_USER_AGENT="Your Name your-email@example.com" \
-  -v "$(pwd)/out:/out" edgar13f:latest holdings buffett --csv /out/buffett.csv
+  -v "$(pwd)/out:/out" edgar:latest holdings buffett --csv /out/buffett.csv
 
 # The dashboard needs the port published and 0.0.0.0 binding inside Docker
 docker run --rm -e EDGAR_USER_AGENT="Your Name your-email@example.com" \
-  -p 8813:8813 edgar13f:latest dashboard --host 0.0.0.0
+  -p 8813:8813 edgar:latest dashboard --host 0.0.0.0
 ```
 
 ## Rate limits
@@ -318,5 +319,3 @@ MIT. See `LICENSE`.
 
 `CLAUDE.md` for a development brief — open this project in Claude Code and
 it'll pick up context on what's built and what's worth building next.
-#   E d g a r  
- 

@@ -1,7 +1,7 @@
 [project]
-name = "edgar13f"
+name = "edgar"
 version = "0.8.0"
-description = "Free, no-API-key Python client + CLI for SEC EDGAR 13F institutional holdings data"
+description = "Free, no-API-key Python client + CLI + Bloomberg-style terminal for SEC EDGAR data"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -14,6 +14,11 @@ dependencies = [
     "flask>=3.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/mvineethr/Edgar"
+Repository = "https://github.com/mvineethr/Edgar"
+Changelog = "https://github.com/mvineethr/Edgar/blob/main/CHANGELOG.md"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
@@ -25,7 +30,7 @@ mcp = [
 ]
 
 [project.scripts]
-edgar13f = "edgar13f.cli:main"
+edgar = "edgar.cli:main"
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
@@ -35,4 +40,4 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-edgar13f = ["dashboard.html", "static/*"]
+edgar = ["dashboard.html", "static/*"]

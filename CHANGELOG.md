@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to edgar13f. Format loosely follows
+All notable changes to edgar. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver
 (pre-1.0: minor bumps may include breaking changes).
 
@@ -10,20 +10,20 @@ All notable changes to edgar13f. Format loosely follows
 - **N-PORT fund holdings** (`nport.py`): what any SEC-registered ETF or
   mutual fund holds, from its latest monthly NPORT-P filing - exact
   balances, values, and the fund's own weight percentages. CLI
-  `edgar13f fund ARKK` (with `--csv`), `/api/fund/<symbol>`, MCP tool
+  `edgar fund ARKK` (with `--csv`), `/api/fund/<symbol>`, MCP tool
   `get_fund_holdings`, and an ETF/FUND HOLDINGS dashboard block.
   Ticker->series mapping via SEC's `company_tickers_mf.json`; unit
   investment trusts (SPY) don't file NPORT-P and error clearly.
 - **EDGAR full-text search** (`fulltext.py`): search the CONTENT of all
-  filings since 2001 (official efts.sec.gov index). CLI `edgar13f fts
+  filings since 2001 (official efts.sec.gov index). CLI `edgar fts
   '"phrase"' --forms 8-K`, `/api/fulltext`, MCP tool
   `search_filing_text`.
 - **Company filings feed**: any company's recent SEC filings (8-K,
   10-K/Q, proxies, ...), newest first with document links. CLI
-  `edgar13f filings AAPL --form 8-K`, `/api/filings/<symbol>`, MCP tool
+  `edgar filings AAPL --form 8-K`, `/api/filings/<symbol>`, MCP tool
   `get_company_filings`, and a SEC FILINGS dashboard block.
 - **Insider-buy screening**: scan a whole symbol list for open-market
-  insider purchases (Form 4 code P). CLI `edgar13f insider-buys AAPL
+  insider purchases (Form 4 code P). CLI `edgar insider-buys AAPL
   MSFT ...`, `/api/insider-buys`, MCP tool `screen_insider_buys`, and a
   watchlist-scoped INSIDER BUYS dashboard block.
 - **New-filing alerts**: the dashboard polls tracked managers' latest
@@ -40,7 +40,7 @@ All notable changes to edgar13f. Format loosely follows
 - **SEC rulemaking on ECO** (`regulatory.py`): newest SEC rules,
   proposed rules, and notices from the official Federal Register API
   (keyless). `/api/regulatory` + MCP tool.
-- **`edgar13f warm`**: pre-fetch every tracked manager's latest 13F and
+- **`edgar warm`**: pre-fetch every tracked manager's latest 13F and
   map all CUSIPs so the dashboard's first consensus/holders load is
   instant. Cron-able; skips everything already cached.
 - **State backup**: EXPORT/IMPORT buttons in the dashboard tab bar
@@ -65,19 +65,19 @@ All notable changes to edgar13f. Format loosely follows
 ## [0.8.0] - 2026-07-17
 
 ### Added
-- **Insider-buy screening** (`edgar13f insider-buys AAPL MSFT ...`,
+- **Insider-buy screening** (`edgar insider-buys AAPL MSFT ...`,
   `/api/insider-buys`, MCP `screen_insider_buys`, watchlist-scoped
   INSIDER BUYS dashboard block): open-market Form 4 purchases (code P)
   across a symbol list, with per-symbol rollups.
-- **N-PORT fund holdings** (`nport.py`; `edgar13f fund ARKK`,
+- **N-PORT fund holdings** (`nport.py`; `edgar fund ARKK`,
   `/api/fund/<symbol>`, MCP `get_fund_holdings`, ETF/FUND HOLDINGS
   block): what an ETF/mutual fund holds from its latest monthly NPORT-P
   filing, with the fund's own weights. Unit investment trusts (SPY)
   error clearly - they don't file NPORT-P.
-- **EDGAR full-text search** (`fulltext.py`; `edgar13f fts '"phrase"'`,
+- **EDGAR full-text search** (`fulltext.py`; `edgar fts '"phrase"'`,
   `/api/fulltext`, MCP `search_filing_text`): search the CONTENT of all
   filings since 2001 via the official efts.sec.gov index.
-- **Company filings feed** (`edgar13f filings AAPL --form 8-K`,
+- **Company filings feed** (`edgar filings AAPL --form 8-K`,
   `/api/filings/<symbol>`, MCP `get_company_filings`, SEC FILINGS
   block): any company's recent filings, newest first, with links.
 - **New-13F-filing alerts**: the dashboard's topbar bell polls
@@ -93,7 +93,7 @@ All notable changes to edgar13f. Format loosely follows
 - **SEC rulemaking on ECO** (`regulatory.py`; `/api/regulatory`, MCP
   `get_sec_rulemaking`): newest SEC rules/notices from the official
   Federal Register API.
-- **`edgar13f warm`**: pre-fetches every tracked manager's latest 13F
+- **`edgar warm`**: pre-fetches every tracked manager's latest 13F
   and maps all CUSIPs so the dashboard's first consensus/holders load
   is instant. Cron-able; safe to re-run.
 - **EXPORT/IMPORT state backup** in the dashboard tab bar: download all
@@ -114,13 +114,13 @@ All notable changes to edgar13f. Format loosely follows
 ## [0.7.0] - 2026-07-17
 
 ### Added
-- **Form 4 insider transactions** (`form4.py`): CLI `edgar13f insiders
+- **Form 4 insider transactions** (`form4.py`): CLI `edgar insiders
   AAPL`, `/api/insiders/<symbol>`, MCP tool
   `get_insider_transactions`, and an INSIDER TRANSACTIONS dashboard
   block. Non-derivative rows only; open-market purchases (P) and
   sales (S) are flagged as the signal. Parsed filings are disk-cached
   by accession number like 13F holdings.
-- **13F position history**: CLI `edgar13f history buffett AAPL`,
+- **13F position history**: CLI `edgar history buffett AAPL`,
   `/api/position-history/<manager>/<query>`, MCP tool
   `get_position_history`, and a 13F POSITION HISTORY dashboard block
   with per-quarter value bars - one manager's stake in one name across

@@ -6,7 +6,7 @@ data. Every cache in this project has a policy derived from ONE question:
 when, if ever, can this data change?
 
 ## The existing caches and their reasoning (the pattern to copy)
-All under `~/.edgar13f/` unless noted:
+All under `~/.edgar/` unless noted:
 
 | Cache | Key | TTL | Why exactly that |
 | --- | --- | --- | --- |

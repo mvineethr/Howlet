@@ -113,7 +113,7 @@ grep -rn 'os\.environ\|getenv\|process\.env' src/ lib/ 2>/dev/null | grep -v tes
 entry per rule, citing the source file. If the repo has a brief, propose
 adding any undocumented rules you found to it (that addition is docs-only).
 
-### Worked example (edgar13f, 2026-07-07)
+### Worked example (edgar, 2026-07-07)
 
 Running this runbook on the exemplar repo (`D:\src\edgar`) yields, among
 others: step 1 finds `CLAUDE.md` with an explicit "Hard rules" section
@@ -121,7 +121,7 @@ others: step 1 finds `CLAUDE.md` with an explicit "Hard rules" section
 every self-throttle; SEC authoritative / market data decoration; no
 paywalled UI components; verify live before done). Step 2 finds
 `HANDOVER.md` — the only chronicle, since the repo has no git history.
-Step 4 finds the enforcement point in `src/edgar13f/client.py`: the
+Step 4 finds the enforcement point in `src/edgar/client.py`: the
 constructor raises `ValueError` when `"@" not in user_agent`, because the
 SEC requires a contact email in the User-Agent. Step 5 finds tests like
 the HTML-search-parsing regression test pinning the decision to never
@@ -144,7 +144,7 @@ INCIDENT:  <date + what actually happened (or would happen) when violated;
 ENFORCED:  <the code/test/CI that catches a violation, or "convention only">
 ```
 
-### Worked examples (edgar13f — all four verified against CLAUDE.md, HANDOVER.md, and the code, 2026-07-07)
+### Worked examples (edgar — all four verified against CLAUDE.md, HANDOVER.md, and the code, 2026-07-07)
 
 ```
 RULE:      No required API key, ever; no paywalled or proprietary component
@@ -167,7 +167,7 @@ ENFORCED:  Convention + review; vendored LICENSE files ship in-repo.
 
 ```
 RULE:      Never relax the SEC User-Agent validation.
-SCOPE:     EdgarClient constructor (src/edgar13f/client.py); every SEC call.
+SCOPE:     EdgarClient constructor (src/edgar/client.py); every SEC call.
 RATIONALE: SEC requires a real name + contact email in the User-Agent;
            anonymous/generic UAs get blocked — and the block lands on the
            USERS of the tool, not on the developer who relaxed the check.
@@ -254,16 +254,16 @@ bypass a hard rule by default.
 
 ## Provenance and maintenance
 
-- Written 2026-07-07 against the edgar13f exemplar (`D:\src\edgar`).
+- Written 2026-07-07 against the edgar exemplar (`D:\src\edgar`).
 - All exemplar incidents verified against `HANDOVER.md` (sessions
   2026-06-30 through 2026-07-07 part 2) and `CLAUDE.md` "Hard rules";
   the User-Agent validation and `_MIN_INTERVAL_SECONDS = 0.12` verified
-  directly in `src/edgar13f/client.py`.
+  directly in `src/edgar/client.py`.
 - Volatile facts: the exemplar's test count (111 passing as of
   2026-07-07 — CLAUDE.md's "108" was already stale, which is why counts
   here are date-stamped), the exemplar's env-var list, and the grep file
   lists in section 2 (adapt extensions per repo).
 - Re-verify: `python -m pytest tests -q  # or your project's suite` for
-  the count; `grep -n '"@" not in user_agent' src/edgar13f/client.py` and
-  `grep -n '_MIN_INTERVAL_SECONDS' src/edgar13f/client.py` for the
+  the count; `grep -n '"@" not in user_agent' src/edgar/client.py` and
+  `grep -n '_MIN_INTERVAL_SECONDS' src/edgar/client.py` for the
   exemplar enforcement points.

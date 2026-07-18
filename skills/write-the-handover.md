@@ -60,7 +60,7 @@ regression test name, the exact test count (4 → 11), the live commands
 run, the `EDGAR_USER_AGENT` used, and an Open section precise enough
 that the pre-2013 SGML item could be picked up cold months later — it
 even names the verification procedure ("find an old 13F-HR via
-`edgar13f search`, fetch its filing index live, confirm the error message
+`edgar search`, fetch its filing index live, confirm the error message
 is useful"). Every later session was faster because of that entry.
 
 ## Anti-patterns

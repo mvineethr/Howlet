@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import responses
 
-from edgar13f.news import MARKET_FEEDS, NewsClient, _parse_rss
+from edgar.news import MARKET_FEEDS, NewsClient, _parse_rss
 
 RSS_TEMPLATE = """<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0"><channel><title>feed</title>
@@ -60,7 +60,7 @@ def test_market_news_merges_feeds_dedupes_and_sorts_newest_first():
 
 @responses.activate
 def test_ticker_news_merges_all_per_ticker_feeds_and_tags_symbol():
-    from edgar13f.news import TICKER_FEED_URLS
+    from edgar.news import TICKER_FEED_URLS
 
     # Yahoo and Google News respond; Seeking Alpha stays unmocked (a
     # connection error there must not break the merge).

@@ -8,13 +8,13 @@ fails silently or, worse, returns someone else's data.
 
 ## Procedure
 1. **Manager CIKs** (`presets.py`): resolve every candidate via
-   `edgar13f search <name>` against live EDGAR before adding. EDGAR names
+   `edgar search <name>` against live EDGAR before adding. EDGAR names
    are messy ("BERKSHIRE HATHAWAY INC" vs "Berkshire Hathaway Inc."), and
    search deliberately returns candidates for a human to disambiguate —
    pick the one whose recent filings actually include 13F-HR, then run
-   `edgar13f holdings <cik>` once to confirm the portfolio looks like the
+   `edgar holdings <cik>` once to confirm the portfolio looks like the
    manager you meant. CLAUDE.md's roadmap states this rule verbatim:
-   "verify each CIK via `edgar13f search` before adding; never guess."
+   "verify each CIK via `edgar search` before adding; never guess."
 2. **Tickers from CUSIPs**: never take OpenFIGI's first listing — prefer
    `exchCode == "US"` (Chevron returns stale "CHV" before "CVX"). Then
    normalize class notation for the consumer: BRK/B → BRK-B for Yahoo.

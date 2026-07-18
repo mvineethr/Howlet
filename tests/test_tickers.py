@@ -6,7 +6,7 @@ import json
 
 import responses
 
-from edgar13f.tickers import OPENFIGI_URL, CusipTickerResolver
+from edgar.tickers import OPENFIGI_URL, CusipTickerResolver
 
 
 @responses.activate
@@ -83,7 +83,7 @@ def test_resolve_batches_at_keyless_limit_of_five(tmp_path):
     resolver = CusipTickerResolver(cache_dir=tmp_path)
     resolver._last_request_at = 0.0
     # Avoid the real 3s inter-batch throttle in tests.
-    import edgar13f.tickers as tickers_mod
+    import edgar.tickers as tickers_mod
 
     original = tickers_mod._MIN_INTERVAL_SECONDS
     tickers_mod._MIN_INTERVAL_SECONDS = 0.0

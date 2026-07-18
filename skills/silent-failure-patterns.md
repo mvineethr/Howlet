@@ -39,7 +39,7 @@ fixtures-copy-reality.md).
 Docker Desktop on this machine occasionally evicts freshly built images —
 `docker images` comes up empty right after a successful build+run.
 **Check**: it is not a registry/auth problem. Just rebuild
-(`docker build -t edgar13f:latest .`); layer cache makes it fast.
+(`docker build -t edgar:latest .`); layer cache makes it fast.
 
 ### 5. WinError 10054 / ConnectionError from a long-running dashboard
 SEC resets stale keep-alive connections on long-lived sessions. Not a

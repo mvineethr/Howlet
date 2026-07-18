@@ -44,20 +44,20 @@ Retry is for transient faults you've identified, not for hope.
 
 ## The symptom→triage table
 
-Each row is a universal pattern class; the edgar13f incident that proved it
+Each row is a universal pattern class; the edgar incident that proved it
 is cited in parentheses (all verified against `HANDOVER.md` and `CLAUDE.md`,
 2026-07-07).
 
 | Symptom | Likely cause | Discriminating check | Fix at this layer |
 |---|---|---|---|
-| `Unexpected token '<'` (or any JSON/XML parse error) in a client consuming an API | Consumer got an HTML error page where it expected JSON — an exception upstream escaped the API's error-format mapping | `curl` the failing API route; read the RAW body. HTML doctype = server problem, not client | The API layer: map ALL upstream exception types to the API's own error format (edgar13f: Flask errorhandler widened from `HTTPError` to `requests.RequestException` → JSON 502, `src/edgar13f/dashboard.py`) |
-| Third-party script/embed loads nothing — no console error, no element, library global is `undefined` | Wrong-but-plausible resource URL; loaders 404 silently (edgar13f: KLineChart UMD lives at `dist/umd/klinecharts.min.js`, plain `dist/` 404s; TradingView embed with wrong script host = no iframe, no error) | `curl -I` the exact URL BEFORE writing integration code; after, verify the global exists at runtime | The dependency layer: fix the URL, then consider removing the boundary entirely (edgar13f vendored the file into `static/`) |
-| Tests green, live output empty/default | The fixture encodes the same wrong assumption as the parser — both were hand-built from the same misreading (edgar13f: Treasury OData values nest under the `m:` metadata namespace; parser AND fixture both used `d:` — tests green, live `{}`) | Diff the fixture against a freshly fetched real response | The test-data layer: fixtures must be captured from reality, never hand-built from docs (see validation-and-qa). Then fix the parser |
-| Tests green, live output garbage | Inverse of the above: the hand-built mock is *correct* but the real feed is broken (edgar13f: SEC's `output=atom` search returns stringified Perl array refs server-side; the correct mock never caught it) | Fetch the real response once; compare to the mock | The client layer: parse the source that actually works (edgar13f switched to the HTML results table), and capture a real-response regression fixture |
-| Intermittent `ConnectionError` / `ECONNRESET` / WinError 10054 from a long-running process | Server recycles stale keep-alive sockets on long-lived sessions — not a block, not a ban (edgar13f: data.sec.gov resets; parallel widget calls surfaced it) | Does a fresh single request to the same endpoint succeed? Then it's socket staleness, not the endpoint | The central HTTP helper: retry `ConnectionError` with the same backoff as a 5xx (edgar13f: `client.py::_get`). If you see it raw, some path is bypassing the helper — fix the routing, don't add sleeps |
-| A number that is plausibly wrong (not obviously wrong) | Unit drift or semantic drift — no error is possible, only cross-checking detects it (edgar13f: 13F `<value>` is whole dollars post-Jan-2023, was labeled thousands → 1000x; Yahoo `chartPreviousClose` is the close before the RANGE start, so "day change" was actually multi-day range drift) | Compare ONE datum to an independent source (a filing total against a news figure; a quote against another site). Magnitude check: does $263T for one portfolio make sense? | The model/parsing layer: fix the semantics AND rename the field to carry its units (`value_usd`, not `value`) so the next reader can't repeat the mistake. See proof-and-analysis-toolkit |
-| Identifier/entity lookup returns a stale or wrong-region result | Mapping APIs return lists ordered by something other than "current/primary"; code took `[0]` (edgar13f: OpenFIGI returned delisted "CHV" before US-composite "CVX" for Chevron's CUSIP) | Print the FULL candidate list for one failing identifier; look for a discriminating attribute | The resolver layer: filter on the discriminating attribute (edgar13f: prefer `exchCode == "US"`, `src/edgar13f/tickers.py`), never take the first element. Add a regression test with the real multi-candidate payload |
-| "Not found" / "pull access denied" for an artifact you just built | Local tooling amnesia — a cache or image store evicted your artifact; it masquerades as an auth/registry/permissions problem (edgar13f: Docker Desktop evicted freshly built images; `docker images` empty right after a successful build+run) | List the local store (`docker images`, `ls dist/`, etc.). Empty = eviction, not auth | The build step: rebuild (layer caches make it fast). Do NOT log into registries or touch credentials first |
+| `Unexpected token '<'` (or any JSON/XML parse error) in a client consuming an API | Consumer got an HTML error page where it expected JSON — an exception upstream escaped the API's error-format mapping | `curl` the failing API route; read the RAW body. HTML doctype = server problem, not client | The API layer: map ALL upstream exception types to the API's own error format (edgar: Flask errorhandler widened from `HTTPError` to `requests.RequestException` → JSON 502, `src/edgar/dashboard.py`) |
+| Third-party script/embed loads nothing — no console error, no element, library global is `undefined` | Wrong-but-plausible resource URL; loaders 404 silently (edgar: KLineChart UMD lives at `dist/umd/klinecharts.min.js`, plain `dist/` 404s; TradingView embed with wrong script host = no iframe, no error) | `curl -I` the exact URL BEFORE writing integration code; after, verify the global exists at runtime | The dependency layer: fix the URL, then consider removing the boundary entirely (edgar vendored the file into `static/`) |
+| Tests green, live output empty/default | The fixture encodes the same wrong assumption as the parser — both were hand-built from the same misreading (edgar: Treasury OData values nest under the `m:` metadata namespace; parser AND fixture both used `d:` — tests green, live `{}`) | Diff the fixture against a freshly fetched real response | The test-data layer: fixtures must be captured from reality, never hand-built from docs (see validation-and-qa). Then fix the parser |
+| Tests green, live output garbage | Inverse of the above: the hand-built mock is *correct* but the real feed is broken (edgar: SEC's `output=atom` search returns stringified Perl array refs server-side; the correct mock never caught it) | Fetch the real response once; compare to the mock | The client layer: parse the source that actually works (edgar switched to the HTML results table), and capture a real-response regression fixture |
+| Intermittent `ConnectionError` / `ECONNRESET` / WinError 10054 from a long-running process | Server recycles stale keep-alive sockets on long-lived sessions — not a block, not a ban (edgar: data.sec.gov resets; parallel widget calls surfaced it) | Does a fresh single request to the same endpoint succeed? Then it's socket staleness, not the endpoint | The central HTTP helper: retry `ConnectionError` with the same backoff as a 5xx (edgar: `client.py::_get`). If you see it raw, some path is bypassing the helper — fix the routing, don't add sleeps |
+| A number that is plausibly wrong (not obviously wrong) | Unit drift or semantic drift — no error is possible, only cross-checking detects it (edgar: 13F `<value>` is whole dollars post-Jan-2023, was labeled thousands → 1000x; Yahoo `chartPreviousClose` is the close before the RANGE start, so "day change" was actually multi-day range drift) | Compare ONE datum to an independent source (a filing total against a news figure; a quote against another site). Magnitude check: does $263T for one portfolio make sense? | The model/parsing layer: fix the semantics AND rename the field to carry its units (`value_usd`, not `value`) so the next reader can't repeat the mistake. See proof-and-analysis-toolkit |
+| Identifier/entity lookup returns a stale or wrong-region result | Mapping APIs return lists ordered by something other than "current/primary"; code took `[0]` (edgar: OpenFIGI returned delisted "CHV" before US-composite "CVX" for Chevron's CUSIP) | Print the FULL candidate list for one failing identifier; look for a discriminating attribute | The resolver layer: filter on the discriminating attribute (edgar: prefer `exchCode == "US"`, `src/edgar/tickers.py`), never take the first element. Add a regression test with the real multi-candidate payload |
+| "Not found" / "pull access denied" for an artifact you just built | Local tooling amnesia — a cache or image store evicted your artifact; it masquerades as an auth/registry/permissions problem (edgar: Docker Desktop evicted freshly built images; `docker images` empty right after a successful build+run) | List the local store (`docker images`, `ls dist/`, etc.). Empty = eviction, not auth | The build step: rebuild (layer caches make it fast). Do NOT log into registries or touch credentials first |
 
 ## Discriminating experiments
 
@@ -69,7 +69,7 @@ succeed under one of them. In rough cost order:
 | Upstream service broken vs your integration broken | `curl` the upstream endpoint directly, bypassing your app, with the same params/headers | Direct call fails → upstream. Direct call works → your layer |
 | Client bug vs server bug | `curl` your own API route; inspect the raw body | Bad body → server. Good body → client |
 | Logic bug vs stale cached state | Cold-cache run (delete/rename the cache dir) vs warm run | Cold run correct → cache staleness or invalidation. Both wrong → logic |
-| Wrong values vs wrong plumbing | Compare ONE datum end-to-end against an independent source (edgar13f verified an AMZN candle O/H/L/C/V against the user's own TradingView screenshot — exact match) | Matches → plumbing AND values fine. Plausible-but-different → semantic drift (units, baseline, timezone) |
+| Wrong values vs wrong plumbing | Compare ONE datum end-to-end against an independent source (edgar verified an AMZN candle O/H/L/C/V against the user's own TradingView screenshot — exact match) | Matches → plumbing AND values fine. Plausible-but-different → semantic drift (units, baseline, timezone) |
 | Parser wrong vs feed changed | Diff the stored fixture against a freshly fetched response | Fixture ≠ reality → refresh fixture, then see which side the parser agrees with |
 | Library not loaded vs library misused | Runtime symbol check (`typeof lib`, `import lib`) | `undefined`/ImportError → loading. Defined → usage |
 | Environment vs code | Run the same command in a clean environment (fresh venv, `docker run`, CI) | Clean env works → local env drift (see build-and-env) |
@@ -87,7 +87,7 @@ running, however easy it is. "Restart and see" distinguishes nothing.
   caller of the fixed function/route. A fault in a shared helper has as
   many symptom sites as callers.
 - **Some faults span two layers — then fix both, each in its own terms.**
-  Worked example (edgar13f, 2026-07-07): connection resets from
+  Worked example (edgar, 2026-07-07): connection resets from
   data.sec.gov were fixed "twice over": the HTTP helper `_get` retries
   `ConnectionError` (transport layer owns transient faults), AND the Flask
   errorhandler maps every `requests.RequestException` to a JSON 502 (API
@@ -98,7 +98,7 @@ running, however easy it is. "Restart and see" distinguishes nothing.
 - Anything beyond a one-line fix in shared code is a change — route it
   through change-control before touching non-negotiables.
 
-## Worked example (edgar13f, 2026-07-07): the full loop on one bug
+## Worked example (edgar, 2026-07-07): the full loop on one bug
 
 Symptom: dashboard widgets intermittently showed "Unexpected token '<'".
 
@@ -149,16 +149,16 @@ Symptom: dashboard widgets intermittently showed "Unexpected token '<'".
 
 - Written 2026-07-07. All exemplar incidents verified against
   `HANDOVER.md` (sessions 2026-06-30 through 2026-07-07) and `CLAUDE.md`
-  gotchas; code claims verified in `src/edgar13f/client.py` (retries
-  `requests.ConnectionError`), `src/edgar13f/dashboard.py`
+  gotchas; code claims verified in `src/edgar/client.py` (retries
+  `requests.ConnectionError`), `src/edgar/dashboard.py`
   (`@app.errorhandler(requests.RequestException)`), and
-  `src/edgar13f/tickers.py` (`exchCode == "US"` preference).
+  `src/edgar/tickers.py` (`exchCode == "US"` preference).
 - Volatile facts: the exemplar's test count (111 as of 2026-07-07; CLAUDE.md
   says 108 — stale), third-party URL layouts (CDN paths, Yahoo endpoint
   walls), and Docker Desktop's eviction behavior are all subject to drift.
 - Re-verify: `python -m pytest tests -q` (test count);
-  `grep -n "ConnectionError" src/edgar13f/client.py` and
-  `grep -n "errorhandler" src/edgar13f/dashboard.py` (fix-layer claims);
+  `grep -n "ConnectionError" src/edgar/client.py` and
+  `grep -n "errorhandler" src/edgar/dashboard.py` (fix-layer claims);
   `curl -I <asset-url>` for any third-party path before trusting it.
 - The universal pattern classes themselves are stable; add new rows to the
   triage table as new silent-failure classes are paid for (one row per

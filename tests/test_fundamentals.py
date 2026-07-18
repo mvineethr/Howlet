@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import responses
 
-from edgar13f.client import EdgarClient
-from edgar13f.fundamentals import (
+from edgar.client import EdgarClient
+from edgar.fundamentals import (
     COMPANY_FACTS_URL,
     TICKER_MAP_URL,
     FundamentalsClient,
@@ -159,7 +159,7 @@ def test_shares_outstanding_end_to_end():
 
 
 def test_normalize_company_name_strips_suffix_noise():
-    from edgar13f.fundamentals import normalize_company_name
+    from edgar.fundamentals import normalize_company_name
 
     # Both spellings seen live for the same company (13F vs SEC map).
     assert normalize_company_name("CHUBB LIMITED") == "CHUBB"
@@ -173,7 +173,7 @@ def test_normalize_company_name_strips_suffix_noise():
 def test_name_to_ticker_matches_sec_titles_first_class_wins():
     from unittest.mock import MagicMock
 
-    from edgar13f.fundamentals import FundamentalsClient
+    from edgar.fundamentals import FundamentalsClient
 
     edgar = MagicMock()
     edgar._get.return_value.json.return_value = {

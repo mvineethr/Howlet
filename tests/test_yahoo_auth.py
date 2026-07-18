@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import responses
 
-from edgar13f.yahoo_auth import YahooAuthSession
+from edgar.yahoo_auth import YahooAuthSession
 
 
 @responses.activate

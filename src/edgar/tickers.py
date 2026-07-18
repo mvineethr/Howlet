@@ -34,7 +34,7 @@ _MAX_RETRIES = 2
 
 
 def default_cache_dir() -> Path:
-    return Path.home() / ".edgar13f"
+    return Path.home() / ".edgar"
 
 
 class CusipTickerResolver:

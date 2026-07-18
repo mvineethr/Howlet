@@ -1,4 +1,4 @@
-# Skill Library Index — edgar13f
+# Skill Library Index — edgar
 
 Sixteen skills, ranked by **quality bought per token spent reading**.
 The ranking logic: skills that prevent whole classes of silent, expensive

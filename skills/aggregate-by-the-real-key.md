@@ -42,7 +42,7 @@ only the last entry, understating Berkshire's AAPL position by whatever
 the other four entries held. The shipped design aggregates by CUSIP
 within each filing first (summing shares and value), then classifies each
 CUSIP as NEW / SOLD / INCREASED / DECREASED / UNCHANGED. Live run
-`edgar13f diff buffett` (Q4 2025 → Q1 2026) then surfaced GOOGL and GOOG
+`edgar diff buffett` (Q4 2025 → Q1 2026) then surfaced GOOGL and GOOG
 as two rows — investigated, confirmed as separate CUSIPs, kept.
 
 The mapping half: Chevron's CUSIP returned stale "CHV" as OpenFIGI's

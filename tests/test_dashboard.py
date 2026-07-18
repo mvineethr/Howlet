@@ -8,10 +8,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from edgar13f.dashboard import create_app
-from edgar13f.market import Quote
-from edgar13f.models import FilingSummary, Holding
-from edgar13f.news import NewsItem
+from edgar.dashboard import create_app
+from edgar.market import Quote
+from edgar.models import FilingSummary, Holding
+from edgar.news import NewsItem
 
 
 def _filing(accession: str, period: date) -> FilingSummary:
@@ -79,7 +79,7 @@ def test_crypto_endpoint_reports_source_and_rows(api, services):
 
 
 def test_regulatory_endpoint_wraps_federal_register(api, monkeypatch):
-    from edgar13f import regulatory
+    from edgar import regulatory
 
     monkeypatch.setattr(
         regulatory, "get_sec_documents",
@@ -96,7 +96,7 @@ def test_regulatory_endpoint_wraps_federal_register(api, monkeypatch):
 def test_index_serves_terminal_html(api):
     resp = api.get("/")
     assert resp.status_code == 200
-    assert b"EDGAR13F" in resp.data
+    assert b"EDGAR" in resp.data
 
 
 def test_managers_deduplicates_alias_ciks(api):
@@ -226,7 +226,7 @@ def test_security_endpoint_404_for_unknown_symbol(api, services):
 
 
 def test_facts_endpoint_maps_ticker_to_metrics(api, services):
-    from edgar13f.fundamentals import FiscalYear
+    from edgar.fundamentals import FiscalYear
 
     services.fundamentals.ticker_to_cik.return_value = "320193"
     services.fundamentals.company_name.return_value = "Apple Inc."
@@ -286,7 +286,7 @@ def test_markets_endpoint_groups_by_section(api, services):
 
 
 def test_events_endpoint_combines_earnings_and_meetings(api, services):
-    from edgar13f.events import EarningsInfo
+    from edgar.events import EarningsInfo
 
     services.events.get_earnings_info.return_value = EarningsInfo(
         symbol="AAPL", next_earnings_date="2026-07-30",
@@ -314,8 +314,8 @@ def test_events_endpoint_degrades_when_earnings_unavailable(api, services):
 
 
 def test_fed_events_endpoint(api, monkeypatch):
-    from edgar13f import views
-    from edgar13f.news import NewsItem as NI
+    from edgar import views
+    from edgar.news import NewsItem as NI
 
     monkeypatch.setattr(
         views, "get_fed_events",
@@ -326,7 +326,7 @@ def test_fed_events_endpoint(api, monkeypatch):
 
 
 def test_macro_endpoint_reports_fred_availability(api, monkeypatch):
-    from edgar13f import macro as macro_mod
+    from edgar import macro as macro_mod
 
     monkeypatch.setattr(macro_mod, "get_treasury_yield_curve", lambda: {"date": "2026-07-03", "curve": []})
     monkeypatch.setattr(macro_mod, "get_bls_series", lambda ids: {})
@@ -337,7 +337,7 @@ def test_macro_endpoint_reports_fred_availability(api, monkeypatch):
 
 
 def test_screener_endpoint_filters_by_pe(api, services):
-    from edgar13f.market import Quote
+    from edgar.market import Quote
 
     services.market.get_quote.return_value = Quote(symbol="AAPL", price=200.0)
     services.fundamentals.ticker_to_cik.return_value = "320193"
@@ -379,7 +379,7 @@ def test_screener_endpoint_filters_by_pe(api, services):
 
 
 def test_options_endpoint_returns_chain(api, services):
-    from edgar13f.options import OptionChain, OptionContract
+    from edgar.options import OptionChain, OptionContract
 
     services.options.get_option_chain.return_value = OptionChain(
         symbol="AAPL", underlying_price=210.0, expiration_dates=["2026-08-21"],
@@ -398,7 +398,7 @@ def test_options_endpoint_404_when_unavailable(api, services):
 
 
 def test_risk_endpoint_computes_portfolio_metrics(api, services):
-    from edgar13f.market import Quote
+    from edgar.market import Quote
 
     def fake_get_security(symbol, range_="1y"):
         prices = {"AAPL": 108.0, "MSFT": 210.0}
@@ -513,7 +513,7 @@ def test_company_filings_feed_lists_all_forms_with_links(api, services):
 
 
 def test_filing_alerts_lists_latest_accessions_and_skips_failures(api, services):
-    from edgar13f.presets import FAMOUS_INVESTORS
+    from edgar.presets import FAMOUS_INVESTORS
 
     unique_ciks = sorted(set(FAMOUS_INVESTORS.values()))
     broken_cik = unique_ciks[0]

@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 import responses
 
-from edgar13f.client import EdgarClient
-from edgar13f.events import (
+from edgar.client import EdgarClient
+from edgar.events import (
     CorporateEventsClient,
     FED_PRESS_RSS,
     FED_SPEECHES_RSS,
@@ -54,7 +54,7 @@ def test_get_earnings_info_returns_none_when_auth_unavailable():
 
 
 def test_summarize_recommendation_buckets():
-    from edgar13f.events import _summarize_recommendation
+    from edgar.events import _summarize_recommendation
 
     assert _summarize_recommendation({"strongBuy": 0, "buy": 0, "hold": 10, "sell": 0, "strongSell": 0}) == "hold"
     assert _summarize_recommendation({"strongBuy": 0, "buy": 0, "hold": 0, "sell": 10, "strongSell": 0}) == "sell"

@@ -1,6 +1,6 @@
 """Shared, JSON-ready view builders for the dashboard and the MCP server.
 
-Both frontends (the Flask web terminal and the `edgar13f mcp` AI tool
+Both frontends (the Flask web terminal and the `edgar mcp` AI tool
 server) call these functions, so a browser user and an AI agent always
 see the same numbers. Everything returns plain dicts/lists.
 

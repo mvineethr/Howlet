@@ -6,8 +6,8 @@ import json
 
 import responses
 
-from edgar13f.client import EdgarClient
-from edgar13f.fulltext import FULLTEXT_SEARCH_URL, search_filings
+from edgar.client import EdgarClient
+from edgar.fulltext import FULLTEXT_SEARCH_URL, search_filings
 
 # Trimmed from a live efts.sec.gov response captured 2026-07-17 -
 # Elasticsearch envelope, ids as "accession:filename", zero-padded ciks.

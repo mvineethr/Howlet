@@ -2,7 +2,7 @@
 looking one up first.
 
 CIKs are stable, public identifiers - verified against SEC EDGAR. If you add
-more, verify via `edgar13f search "<name>"` rather than guessing.
+more, verify via `edgar search "<name>"` rather than guessing.
 
 NOTE: 13F filings report the *manager's* aggregate long equity positions,
 quarterly, with up to a ~45 day reporting lag. They exclude short positions,
@@ -37,7 +37,7 @@ FAMOUS_INVESTORS: dict[str, str] = {
 }
 
 # Every CIK above was verified live (2026-07-17): name via
-# `edgar13f search`, plus a check that the entity's LATEST 13F-HR is
+# `edgar search`, plus a check that the entity's LATEST 13F-HR is
 # current (2026-03-31 period) - EDGAR entity names are inconsistent,
 # and famous managers migrate filers (Appaloosa, Greenlight->DME), so a
 # name match alone can hand you a filer that stopped reporting years ago.

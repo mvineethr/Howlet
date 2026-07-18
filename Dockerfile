@@ -17,9 +17,9 @@ COPY src ./src
 RUN pip install --no-cache-dir .
 
 # Dashboard port; run with:
-#   docker run --rm -e EDGAR_USER_AGENT="..." -p 8813:8813 edgar13f:latest \
+#   docker run --rm -e EDGAR_USER_AGENT="..." -p 8813:8813 edgar:latest \
 #     dashboard --host 0.0.0.0
 EXPOSE 8813
 
-ENTRYPOINT ["edgar13f"]
+ENTRYPOINT ["edgar"]
 CMD ["--help"]

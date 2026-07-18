@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from edgar13f.consensus import ManagerPortfolio, build_consensus_rows
+from edgar.consensus import ManagerPortfolio, build_consensus_rows
 
 
 def _portfolio(label: str, positions: dict[str, tuple[str, int]]) -> ManagerPortfolio:

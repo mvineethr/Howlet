@@ -18,7 +18,7 @@ any "how does X work" question about this repo.
    - Which gotcha is closest to the data I'm about to handle?
 4. Check the **Next features** list in CLAUDE.md. If the task matches an item
    there, the priority order and any notes ("verify each CIK via
-   `edgar13f search` before adding; never guess") are instructions, not
+   `edgar search` before adding; never guess") are instructions, not
    suggestions.
 5. Only then open source files.
 

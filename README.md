@@ -1,5 +1,9 @@
 # Howlet
 
+[![PyPI](https://img.shields.io/pypi/v/howlet.svg)](https://pypi.org/project/howlet/)
+[![CI](https://github.com/mvineethr/Howlet/actions/workflows/ci.yml/badge.svg)](https://github.com/mvineethr/Howlet/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 A free, no-API-key Python client + CLI + **Bloomberg-style terminal
 dashboard** for SEC EDGAR data — starting from **Form 13F** (the
 quarterly filings that disclose what stocks institutional investors like
@@ -49,13 +53,22 @@ small, typed Python client and a CLI.
 ## Setup
 
 ```bash
-pip install -e ".[dev]"
+pip install howlet
 export EDGAR_USER_AGENT="Your Name your-email@example.com"
 ```
 
 SEC requires that User-Agent string to include a real contact email — see
 https://www.sec.gov/os/webmaster-faq#developers. Generic strings like
 `python-requests` get rate-limited or blocked.
+
+Developing on Howlet itself (editable install, test/lint extras) instead
+of just using it:
+
+```bash
+git clone https://github.com/mvineethr/Howlet.git
+cd Howlet
+pip install -e ".[dev]"
+```
 
 ## Usage
 

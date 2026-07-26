@@ -6,6 +6,60 @@ Newest session first.
 
 ---
 
+# Session 2026-07-18: doc system backfill + CLAUDE.md/HANDOVER.md upkeep
+
+## What was asked
+
+Write the end-of-session record for parts 3-5 of the previous stretch
+(crypto/Federal-Register, the 6-feature sprint, the two renames, the
+PyPI publish, the owl logo) into the external EB-1A/content docs system
+at `D:\project documentaions\howlet\`. Then bring this repo's own
+`CLAUDE.md` and `HANDOVER.md` up to date with the same period, and turn
+that update workflow into a reusable `/handover` slash command.
+
+## What was done
+
+- **External docs** (`D:\project documentaions\howlet\`): wrote
+  `daily-log.md` Session 2 (full narrative for S9-S11 - crypto/
+  Federal-Register, the insider-buy/filing-alerts/full-text/N-PORT/FX
+  sprint, the `edgar13f`->`Edgar`->`howlet` rename saga including the
+  PyPI import-collision discovery, the credential-exposure incident,
+  the actual PyPI publish with fresh-venv verification, and the owl
+  logo work including the sparkle-watermark pixel patch); updated
+  `overview.md`'s Current Status/Architectural Decisions/Pending
+  sections; queued 5 story candidates in docbot's `content/ideas.md`;
+  updated `docbot/journey.md` and this project's `eb1a-evidence.md`
+  with the first-public-release milestone.
+- **This repo's `CLAUDE.md`**: added a `## Session History` block (S1
+  through S12, one line each, grounded in this file's own session
+  headers rather than invented); updated Status to note the project is
+  now published (PyPI + public GitHub, CI green); replaced the
+  "Publish" next-feature item (done) with a note that a 0.8.1 release
+  is still needed before PyPI's *rendered* description picks up the new
+  README/logo (PyPI freezes each release's description at upload time);
+  added two Gotchas (PyPI import-name collisions vs. listing-name
+  clashes; CI's bare `pytest` vs. local `python -m pytest` resolving
+  `sys.path` differently) and one Hard rule (never a real credential in
+  a repo-tracked file - `.pypirc` only). 186 -> 241 lines, within the
+  200-300 target.
+- **This entry** in `HANDOVER.md`, and a new `/handover` slash command
+  at `~/.claude/commands/handover.md` (user-level, so it works the same
+  way across projects) that encodes this exact workflow for future
+  sessions.
+
+## Note on gaps
+
+Docbot's own daily-log Session 1 (written earlier from compacted
+context) describes a per-widget manager-selector and a jump-nav
+scrolling fix that has no corresponding dated entry anywhere in this
+file - that work isn't represented in `CLAUDE.md`'s new Session History
+either, since the block was built strictly from this file's real
+headers rather than filled in from memory. If that work matters for the
+record, it needs its own HANDOVER.md entry written from whoever still
+has the detail, not reconstructed here.
+
+---
+
 # Session 2026-07-17 (part 5): rebrand to Howlet, GitHub + CI live
 
 ## What was asked

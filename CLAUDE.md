@@ -62,6 +62,12 @@ doc. Tests: `pytest tests/` - all offline/mocked.
   widget caps stacked indicators behind a subscription.
 - **Verify live before calling anything done.** Offline mocks have
   repeatedly agreed with the code and disagreed with reality.
+- **Never put a real credential in any repo-tracked file - `.pypirc`
+  only, written by hand outside the repo.** `pyproject.toml` is
+  specifically dangerous for this: it ships straight into every
+  sdist/wheel you build and upload. A PyPI token pasted there was
+  caught in a `git diff` before commit; treat any secret shown in a
+  chat transcript as needing rotation too, not just "never committed."
 
 ## Gotchas (each cost a live debugging session - don't re-learn them)
 
@@ -113,6 +119,20 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 - **Date-only strings (e.g. Federal Register `publication_date`) must
   not go through `new Date(...)` display formatting** - JS parses them
   as UTC midnight, so US timezones render the previous day.
+- **A same-named PyPI package isn't just a listing clash - it can be an
+  `import`-level collision.** Distribution name and top-level package
+  name aren't required to match. Before adopting a package name, pull
+  the existing project's actual sdist/wheel and check its real
+  importable module name, not just whether the PyPI slug is taken.
+  This is why the project is `howlet`, not `edgar` (py-edgar's module
+  is also `edgar`) or `edgar-terminal` (same problem, different label).
+- **CI runs bare `pytest tests/ -v`, not `python -m pytest`.** The
+  latter puts cwd on `sys.path`; the former doesn't. A cross-module
+  test import (`from tests.test_form4 import ...`) worked locally by
+  accident and failed on every CI matrix leg on the first real push.
+  Same-directory imports (`from test_form4 import ...`) resolve under
+  both invocations. When CI disagrees with a green local run, run CI's
+  *exact* command locally before trusting either result.
 - Docker Desktop here sometimes evicts freshly built images; rebuild.
 
 ## Caches (all under `~/.howlet/`)
@@ -157,19 +177,54 @@ every CIK verified live against a current 13F-HR.
 Known-untested: FRED with a real key; pre-2013 SGML filings (should
 error clearly, never exercised).
 
+**Published.** `pip install howlet` is live on PyPI (v0.8.0), verified
+end-to-end in a throwaway venv against real SEC EDGAR data. GitHub is
+public at `github.com/mvineethr/Howlet`, CI green on all 6 matrix legs.
+
 ## Next features (in rough priority order)
 
-1. **Publish** - the only remaining step needs the user's accounts:
-   create the GitHub repo + push (CI will run then), and
-   `twine upload dist/howlet-0.8.0*` to PyPI. CHANGELOG, version
-   0.8.0, sdist+wheel (twine-checked), and the local git history are
-   all done.
+1. **Publish a follow-up release (0.8.1+)** so the *rendered PyPI
+   description* picks up the README's logo/badges - PyPI freezes each
+   release's description at upload time, so the live 0.8.0 page still
+   shows the pre-logo README until a new version ships.
 2. **N-PORT depth** - disk-cache parsed NPORT filings by accession
    (immutable, same as 13F/Form 4), fund position history across
    months, or fund-vs-13F overlap views.
 3. **Finer-grained EDGAR locking** - `edgar_lock` serializes ALL EDGAR
    access; a cold consensus load still blocks the other EDGAR-backed
    panels (mitigated day-to-day by `howlet warm`).
+
+## Session History
+
+One line per session; full narrative for each lives in `HANDOVER.md`.
+
+- **S1** (2026-06-30) - First-ever live SEC verification (Docker); found
+  and fixed the `output=atom` Perl-array-ref bug in `search_company_cik`.
+- **S2** (2026-07-06 pt1) - Initial Bloomberg-style Flask dashboard +
+  market data + news.
+- **S3** (2026-07-06 pt2) - Full terminal screens (DES/FA/HDS/PORT) +
+  first MCP server.
+- **S4** (2026-07-06 pt3) - Analytics, screener, options, macro, events
+  modules.
+- **S5** (2026-07-07) - KLineChart charting, NEWS/MY tabs, FRED macro.
+- **S6** (2026-07-07 pt2) - Customizable blank-slate dashboard: widgets,
+  tabs, BACK button.
+- **S7** (2026-07-17) - Form 4, 13F position history, expanded presets,
+  name-to-ticker fallback, v0.7.0.
+- **S8** (2026-07-17 pt2) - Per-widget resize toggles + named layout
+  snapshots.
+- **S9** (2026-07-17 pt3) - Crypto screen (CoinGecko/Coinpaprika) +
+  Federal Register + cleaner topbar.
+- **S10** (2026-07-17 pt4) - Review-driven feature sprint: insider-buy
+  screening, filing alerts, EDGAR full-text search, N-PORT fund
+  holdings, FX matrix, v0.8.0 release prep.
+- **S11** (2026-07-17 pt5) - Rebrand `edgar13f`→`Edgar`→`howlet` (PyPI
+  `import`-collision discovery), caught+fixed a credential exposure,
+  first GitHub push + CI fix, published live on PyPI, owl logo across
+  README/PyPI/in-app.
+- **S12** (2026-07-18) - Wrote external EB-1A/content docs for S9-S11;
+  refreshed this Session History block, Status, and two new Gotchas;
+  added the `/handover` slash command.
 
 ## Working rules
 

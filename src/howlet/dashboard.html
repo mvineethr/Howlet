@@ -12,13 +12,21 @@
 <script src="/static/klinecharts.min.js"></script>
 <style>
   :root {
-    --bg: #000000;
-    --panel: #0a0a0a;
-    --border: #2a2a2a;
-    --amber: #ff9900;
-    --amber-dim: #b36b00;
+    /* Elevation ramp. Was 9 raw greys scattered through the sheet; now one
+       axis. --bg is off-black, not #000 - pure black flattens a stack this
+       dark. Order: bg < panel < elev-1 (chrome) < elev-2 (interactive). */
+    --bg: #08090a;
+    --panel: #0d0e0f;
+    --elev-1: #141618;
+    --elev-2: #1c1f21;
+    --hair: #1a1c1e;      /* 1px row dividers inside panels */
+    --border: #2e3134;
+    /* Brand amber, hue 36 held exactly, saturation 100% -> 80%. At full
+       chroma on black it vibrates at this density. */
+    --amber: #eaa53e;
+    --amber-dim: #ae7013;
     --text: #d8d8d8;
-    --dim: #7a7a7a;
+    --dim: #8a8a8a;       /* was #7a7a7a: 4.53:1 on panel, now 5.3:1 */
     --up: #00d26a;
     --down: #ff433d;
     --cyan: #4dd7fa;
@@ -38,29 +46,31 @@
   /* ---------- header ---------- */
   #topbar {
     display: flex; align-items: center; gap: 10px;
-    background: #111; border-bottom: 2px solid var(--amber);
+    background: var(--elev-1); border-bottom: 2px solid var(--amber);
     padding: 6px 12px; flex-wrap: wrap;
   }
   #brand { color: var(--amber); font-weight: bold; letter-spacing: 2px; font-size: 14px; }
-  #brand .live { color: var(--up); animation: blink 2s infinite; }
-  @keyframes blink { 50% { opacity: 0.25; } }
+  /* Static. This dot used to blink on a 2s loop regardless of whether any
+     feed was actually up, so it asserted "live" it could not know. Glyph and
+     colour unchanged; only the fake animation is gone. */
+  #brand .live { color: var(--up); }
   #topbar select, #topbar input, #topbar button {
-    background: #000; color: var(--amber); border: 1px solid var(--border);
+    background: var(--bg); color: var(--amber); border: 1px solid var(--border);
     font-family: inherit; font-size: 12px; padding: 3px 8px;
   }
   #cmd { width: 300px; text-transform: uppercase; }
   #cmd::placeholder { color: var(--amber-dim); text-transform: none; }
   #topbar button { cursor: pointer; border-color: var(--amber-dim); }
-  #topbar button:hover { background: var(--amber); color: #000; }
+  #topbar button:hover { background: var(--amber); color: var(--bg); }
   #clock { margin-left: auto; color: var(--dim); }
   #clock b { color: var(--text); }
-  #status { color: var(--dim); font-size: 11px; }
+  #status { color: var(--dim); font-size: 12px; }
   #status.err { color: var(--down); }
 
   /* ---------- tape ---------- */
   #tape-wrap {
     overflow: hidden; white-space: nowrap;
-    background: #050505; border-bottom: 1px solid var(--border);
+    background: var(--bg); border-bottom: 1px solid var(--border);
     padding: 4px 0; position: relative;
   }
   #tape { display: inline-block; padding-left: 100%; animation: scroll 55s linear infinite; }
@@ -79,19 +89,19 @@
   /* ---------- customizable dashboard (HOME) ---------- */
   #tabbar {
     display: flex; gap: 2px; align-items: center;
-    background: #0d0d0d; border-bottom: 1px solid var(--border);
+    background: var(--elev-1); border-bottom: 1px solid var(--border);
     padding: 3px 8px 0; flex-wrap: wrap;
   }
   .dtab {
     padding: 3px 12px; cursor: pointer; color: var(--dim);
     border: 1px solid var(--border); border-bottom: none;
-    background: #0a0a0a; letter-spacing: 1px;
+    background: var(--panel); letter-spacing: 1px;
     display: inline-flex; align-items: center; gap: 6px;
   }
-  .dtab.active { color: var(--amber); background: #161616; border-color: var(--amber-dim); }
+  .dtab.active { color: var(--amber); background: var(--elev-2); border-color: var(--amber-dim); }
   .dtab .tx { color: var(--down); font-weight: bold; }
   #tab-add { padding: 3px 10px; cursor: pointer; color: var(--up); border: 1px dashed var(--border); }
-  #tab-add:hover { background: #161616; }
+  #tab-add:hover { background: var(--elev-2); }
   #dash-grid {
     display: grid; gap: 8px; padding: 8px;
     grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
@@ -101,23 +111,23 @@
   .widget .panel-b { max-height: 420px; }
   .widget.tall .panel-b { max-height: 860px; }
   .wremove { color: var(--down); cursor: pointer; font-weight: bold; padding: 0 4px; }
-  .wremove:hover { background: var(--down); color: #000; }
+  .wremove:hover { background: var(--down); color: var(--bg); }
   .wsize { color: var(--dim); cursor: pointer; font-weight: bold; padding: 0 4px; }
-  .wsize:hover { background: #161616; }
+  .wsize:hover { background: var(--elev-2); }
   .wsize.on { color: var(--amber); }
   #layouts-bar { margin-left: auto; display: inline-flex; gap: 4px; align-items: center; padding-bottom: 3px; }
   #layouts-bar select {
-    background: #000; color: var(--text); border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); border: 1px solid var(--border);
     font: inherit; padding: 1px 4px; max-width: 140px;
   }
   .lay-btn { color: var(--dim); cursor: pointer; padding: 2px 6px; border: 1px solid var(--border); }
-  .lay-btn:hover { color: var(--amber); background: #161616; }
+  .lay-btn:hover { color: var(--amber); background: var(--elev-2); }
   #alerts { cursor: pointer; color: var(--dim); padding: 0 6px; }
   #alerts.hot { color: var(--amber); }
-  #alerts .cnt { background: var(--down); color: #000; font-weight: bold; padding: 0 5px; margin-left: 2px; }
+  #alerts .cnt { background: var(--down); color: var(--bg); font-weight: bold; padding: 0 5px; margin-left: 2px; }
   #alerts-panel {
     display: none; position: absolute; right: 8px; top: 34px; z-index: 60;
-    background: #0d0d0d; border: 1px solid var(--amber-dim); padding: 8px;
+    background: var(--elev-1); border: 1px solid var(--amber-dim); padding: 8px;
     max-width: 440px; box-shadow: 0 4px 18px #000;
   }
   #alerts-panel.open { display: block; }
@@ -127,8 +137,8 @@
     color: var(--dim); cursor: pointer; padding: 3px 14px;
     border: 1px solid var(--border); letter-spacing: 1px;
   }
-  .mkts-mode:hover { background: #161616; }
-  .mkts-mode.on { color: var(--amber); border-color: var(--amber-dim); background: #161616; }
+  .mkts-mode:hover { background: var(--elev-2); }
+  .mkts-mode.on { color: var(--amber); border-color: var(--amber-dim); background: var(--elev-2); }
   #mkts-source { margin-left: 8px; }
   #add-block {
     border: 1px dashed var(--border); color: var(--dim);
@@ -140,29 +150,29 @@
   #add-picker { display: none; width: 100%; }
   #add-picker.open { display: block; }
   #add-picker select, #add-picker input, #add-picker button {
-    background: #000; color: var(--amber); border: 1px solid var(--border);
+    background: var(--bg); color: var(--amber); border: 1px solid var(--border);
     font-family: inherit; font-size: 12px; padding: 3px 8px; margin: 2px;
   }
   #add-picker button { border-color: var(--amber-dim); cursor: pointer; }
-  #add-picker button:hover { background: var(--amber); color: #000; }
+  #add-picker button:hover { background: var(--amber); color: var(--bg); }
   .empty-state { text-align: center; padding: 30px 10px; color: var(--dim); }
   .empty-state button {
-    background: #000; color: var(--amber); border: 1px solid var(--amber-dim);
+    background: var(--bg); color: var(--amber); border: 1px solid var(--amber-dim);
     font-family: inherit; padding: 4px 14px; cursor: pointer; margin-top: 10px;
   }
-  .empty-state button:hover { background: var(--amber); color: #000; }
+  .empty-state button:hover { background: var(--amber); color: var(--bg); }
   #back-btn {
-    background: #000; color: var(--amber); border: 1px solid var(--amber-dim);
-    font-family: inherit; font-size: 11px; padding: 1px 10px; cursor: pointer;
+    background: var(--bg); color: var(--amber); border: 1px solid var(--amber-dim);
+    font-family: inherit; font-size: 12px; padding: 1px 10px; cursor: pointer;
   }
-  #back-btn:hover { background: var(--amber); color: #000; }
+  #back-btn:hover { background: var(--amber); color: var(--bg); }
   .wl-add input {
-    background: #000; color: var(--amber); border: 1px solid var(--border);
-    font-family: inherit; font-size: 11px; padding: 2px 6px; width: 110px;
+    background: var(--bg); color: var(--amber); border: 1px solid var(--border);
+    font-family: inherit; font-size: 12px; padding: 2px 6px; width: 110px;
   }
   .wl-add button {
-    background: #000; color: var(--amber); border: 1px solid var(--amber-dim);
-    font-family: inherit; font-size: 11px; padding: 2px 8px; cursor: pointer;
+    background: var(--bg); color: var(--amber); border: 1px solid var(--amber-dim);
+    font-family: inherit; font-size: 12px; padding: 2px 8px; cursor: pointer;
   }
 
   #port-grid {
@@ -178,15 +188,15 @@
     display: flex; flex-direction: column; min-height: 120px;
   }
   .panel-h {
-    background: #161616; color: var(--amber);
+    background: var(--elev-1); color: var(--amber);
     padding: 4px 10px; letter-spacing: 1px; font-weight: bold;
     border-bottom: 1px solid var(--border);
     display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
   }
   .panel-h .sub { color: var(--dim); font-weight: normal; letter-spacing: 0; }
   .panel-h .w-mgr {
-    background: #000; color: var(--amber); border: 1px solid var(--border);
-    font-family: inherit; font-size: 11px; padding: 0 4px; letter-spacing: 0;
+    background: var(--bg); color: var(--amber); border: 1px solid var(--border);
+    font-family: inherit; font-size: 12px; padding: 0 4px; letter-spacing: 0;
     max-width: 160px;
   }
   .panel-b { padding: 6px 10px; overflow: auto; }
@@ -211,28 +221,28 @@
   #p-holders { grid-area: holders; }
   #p-secnews { grid-area: secnews; max-height: 320px; }
   .range-btn {
-    background: #000; color: var(--dim); border: 1px solid var(--border);
-    font-family: inherit; font-size: 11px; padding: 1px 7px; cursor: pointer;
+    background: var(--bg); color: var(--dim); border: 1px solid var(--border);
+    font-family: inherit; font-size: 12px; padding: 1px 7px; cursor: pointer;
   }
-  .range-btn.active, .range-btn:hover { color: #000; background: var(--amber); }
+  .range-btn.active, .range-btn:hover { color: var(--bg); background: var(--amber); }
   #chart-box { padding: 0; }
   #kline-chart { height: 440px; width: 100%; }
   #chart-toolbar {
     display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
-    padding: 4px 8px; border-bottom: 1px solid var(--border); background: #0d0d0d;
+    padding: 4px 8px; border-bottom: 1px solid var(--border); background: var(--elev-1);
   }
   #chart-toolbar select {
-    background: #000; color: var(--amber); border: 1px solid var(--border);
-    font-family: inherit; font-size: 11px; padding: 2px 5px;
+    background: var(--bg); color: var(--amber); border: 1px solid var(--border);
+    font-family: inherit; font-size: 12px; padding: 2px 5px;
   }
   .tool-btn {
-    background: #000; color: var(--dim); border: 1px solid var(--border);
-    font-family: inherit; font-size: 11px; padding: 1px 7px; cursor: pointer;
+    background: var(--bg); color: var(--dim); border: 1px solid var(--border);
+    font-family: inherit; font-size: 12px; padding: 1px 7px; cursor: pointer;
   }
-  .tool-btn:hover { color: #000; background: var(--amber); }
+  .tool-btn:hover { color: var(--bg); background: var(--amber); }
   .ind-chip {
     color: var(--cyan); border: 1px solid var(--border); padding: 0 6px;
-    font-size: 11px; display: inline-flex; align-items: center; gap: 4px;
+    font-size: 12px; display: inline-flex; align-items: center; gap: 4px;
   }
   .ind-chip .x { color: var(--down); cursor: pointer; font-weight: bold; }
   .stat-grid { display: grid; grid-template-columns: auto 1fr; gap: 3px 14px; padding: 4px; }
@@ -240,18 +250,18 @@
   .stat-grid .v { text-align: right; white-space: nowrap; }
   .bigpx { font-size: 22px; font-weight: bold; }
   .orb-badge { padding: 1px 8px; font-weight: bold; }
-  .orb-badge.ABOVE_RANGE { color: #000; background: var(--up); }
-  .orb-badge.BELOW_RANGE { color: #000; background: var(--down); }
+  .orb-badge.ABOVE_RANGE { color: var(--bg); background: var(--up); }
+  .orb-badge.BELOW_RANGE { color: var(--bg); background: var(--down); }
   .orb-badge.INSIDE_RANGE { color: var(--dim); border: 1px solid var(--border); }
 
   /* EQS / OPT / ECO / PF screens */
   .filter-row { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px; align-items: center; }
   .filter-row input, .filter-row select {
-    background: #000; color: var(--amber); border: 1px solid var(--border);
+    background: var(--bg); color: var(--amber); border: 1px solid var(--border);
     font-family: inherit; padding: 3px 6px; width: 90px;
   }
-  .filter-row label { color: var(--dim); font-size: 11px; }
-  .filter-row button { background: #000; color: var(--amber); border: 1px solid var(--amber-dim);
+  .filter-row label { color: var(--dim); font-size: 12px; }
+  .filter-row button { background: var(--bg); color: var(--amber); border: 1px solid var(--amber-dim);
     font-family: inherit; padding: 3px 10px; cursor: pointer; }
   #eco-grid, #pf-grid { display: grid; gap: 8px; padding: 8px; grid-template-columns: 1fr 1fr; }
   @media (max-width: 900px) { #eco-grid, #pf-grid { grid-template-columns: 1fr; } }
@@ -264,9 +274,9 @@
   /* WATCH screen */
   #watch-wrap { padding: 8px; }
   #watch-add { margin-bottom: 6px; display: flex; gap: 6px; }
-  #watch-add input { background:#000; color:var(--amber); border:1px solid var(--border);
+  #watch-add input { background: var(--bg); color:var(--amber); border:1px solid var(--border);
     font-family: inherit; padding: 3px 8px; text-transform: uppercase; }
-  #watch-add button { background:#000; color:var(--amber); border:1px solid var(--amber-dim);
+  #watch-add button { background: var(--bg); color:var(--amber); border:1px solid var(--amber-dim);
     font-family: inherit; padding: 3px 10px; cursor: pointer; }
   .rm { color: var(--down); cursor: pointer; padding: 0 6px; }
 
@@ -275,7 +285,7 @@
   #help-wrap h2 { color: var(--amber); margin: 18px 0 6px; font-size: 13px; letter-spacing: 1px;
     border-top: 1px solid var(--border); padding-top: 10px; }
   #help-wrap h2:first-child { border-top: none; padding-top: 0; }
-  #about-logo { float: right; width: 120px; margin: 0 0 10px 16px; border-radius: 6px; }
+  #about-logo { float: right; width: 120px; margin: 0 0 10px 16px; }
   #help-wrap h3.gloss-h { color: var(--text); margin: 10px 0 4px; font-size: 12px; font-weight: normal; }
   #help-wrap td { padding: 2px 14px 2px 0; vertical-align: top; }
   .cmd-ex { color: var(--cyan); }
@@ -283,7 +293,7 @@
   .help-nav a { color: var(--amber); }
   table.gloss { margin: 4px 0 8px; }
   table.gloss td:first-child { white-space: nowrap; color: var(--cyan); font-weight: bold; }
-  table.gloss tr { border-bottom: 1px solid #141414; }
+  table.gloss tr { border-bottom: 1px solid var(--hair); }
   .faq-q { color: var(--amber) !important; white-space: normal !important; max-width: 230px; }
 
   /* ---------- tables ---------- */
@@ -293,8 +303,8 @@
     border-bottom: 1px solid var(--border); padding: 2px 6px;
     position: sticky; top: 0; background: var(--panel);
   }
-  td { padding: 2px 6px; border-bottom: 1px solid #141414; white-space: nowrap; }
-  tr:hover td { background: #131313; }
+  td { padding: 2px 6px; border-bottom: 1px solid var(--hair); white-space: nowrap; }
+  tr:hover td { background: var(--elev-2); }
   .num { text-align: right; }
   th.num { text-align: right; }
   .tkr { color: var(--cyan); font-weight: bold; cursor: pointer; }
@@ -303,36 +313,81 @@
   .issuer { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
 
   .badge { padding: 0 6px; font-weight: bold; }
-  .badge.NEW { color: #000; background: var(--up); }
-  .badge.SOLD { color: #000; background: var(--down); }
+  .badge.NEW { color: var(--bg); background: var(--up); }
+  .badge.SOLD { color: var(--bg); background: var(--down); }
   .badge.INCREASED { color: var(--up); border: 1px solid var(--up); }
   .badge.DECREASED { color: var(--down); border: 1px solid var(--down); }
 
   /* ---------- allocation bars ---------- */
   .bar-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
   .bar-lbl { width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .bar-track { flex: 1; background: #141414; height: 12px; }
+  .bar-track { flex: 1; background: var(--elev-2); height: 12px; }
   .bar-fill { height: 100%; background: linear-gradient(90deg, var(--amber-dim), var(--amber)); }
   .bar-val { width: 58px; text-align: right; color: var(--amber); }
 
   /* ---------- news ---------- */
-  .news-item { padding: 4px 0; border-bottom: 1px solid #141414; }
-  .news-meta { color: var(--dim); font-size: 11px; }
+  .news-item { padding: 4px 0; border-bottom: 1px solid var(--hair); }
+  .news-meta { color: var(--dim); font-size: 12px; }
   .news-src { color: var(--amber-dim); }
 
   /* ---------- footer ---------- */
   #fkeys {
     display: flex; gap: 4px; padding: 4px 8px;
-    background: #111; border-top: 1px solid var(--border);
-    color: var(--dim); font-size: 11px; flex-wrap: wrap;
+    background: var(--elev-1); border-top: 1px solid var(--border);
+    color: var(--dim); font-size: 12px; flex-wrap: wrap;
   }
   .fkey { cursor: pointer; padding: 0 4px; }
   .fkey b { color: var(--amber); }
-  .fkey:hover { background: #222; }
-  #footer { padding: 4px 10px; color: var(--dim); font-size: 11px; }
+  .fkey:hover { background: var(--elev-2); }
+  #footer { padding: 4px 10px; color: var(--dim); font-size: 12px; }
 
   .loading { color: var(--dim); padding: 8px; }
   svg.spark { vertical-align: middle; }
+
+  /* ==================================================================
+     Redesign layer. Density is deliberately unchanged (this is a
+     cockpit); rank comes from weight, tracking and surface instead of
+     size, and every interactive element now has a visible focus and
+     hover state.
+     ================================================================== */
+
+  /* -- rank without size: the scale is flat at 12px on purpose -- */
+  /* 13 controls (EQS filters, PF add, watch add, opt expiry, ...) set
+     font-family but never font-size, so they fell back to the UA default of
+     13.33px in a proportional metric. Lowest possible specificity, so every
+     existing per-control rule still wins. */
+  input, select, button, textarea { font: inherit; }
+  th { letter-spacing: 0.6px; text-transform: uppercase; }
+  .num, .bar-val, .bigpx { font-variant-numeric: tabular-nums; }
+  /* Long-form asides in a panel header read as a note, not as a label.
+     Used where .sub carries a full sentence rather than 2-3 words. */
+  .panel-h .sub.note { color: var(--dim); font-size: 12px; opacity: 0.85; }
+
+  /* -- surface, not outline: panels read as stacked planes -- */
+  .panel { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04), 0 1px 3px rgb(0 0 0 / 0.5); }
+  .panel-h { box-shadow: inset 2px 0 0 var(--amber-dim); }
+  /* Chrome stays tight, content breathes. That difference is the rhythm. */
+  .panel-b { padding: 8px 10px; }
+
+  /* -- focus: there were zero focus styles in the whole terminal -- */
+  :focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+
+  /* -- motion: acknowledges input and content arrival, nothing else -- */
+  a, button, select, input, td, .fkey, .dtab, .tkr, .lay-btn, .tool-btn,
+  .range-btn, .mkts-mode, .wsize, .wremove, .rm, #alerts, #tab-add, #back-btn {
+    transition: background-color 0.13s ease, color 0.13s ease, border-color 0.13s ease;
+  }
+  button:active, .fkey:active, .dtab:active, .lay-btn:active,
+  .tool-btn:active, .range-btn:active, .mkts-mode:active { transform: translateY(1px); }
+  .panel { animation: panel-in 0.22s ease both; }
+  @keyframes panel-in { from { opacity: 0; transform: translateY(4px); } }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    /* The tape is parked offscreen by padding-left:100% and walked in by the
+       scroll animation. With the animation off it must start in view. */
+    #tape { padding-left: 0; }
+  }
 </style>
 </head>
 <body>
@@ -432,7 +487,7 @@
       <div class="panel-b" id="stats-body"><div class="loading">Loading...</div></div>
     </div>
     <div class="panel" id="p-studies">
-      <div class="panel-h">STUDIES <span class="sub">SMA/EMA/RSI/MACD/Bollinger/ORB - add more from the chart's own indicator picker</span></div>
+      <div class="panel-h">STUDIES <span class="sub note">SMA/EMA/RSI/MACD/Bollinger/ORB - add more from the chart's own indicator picker</span></div>
       <div class="panel-b" id="studies-body"><div class="loading">Computing studies...</div></div>
     </div>
     <div class="panel" id="p-events">
@@ -457,7 +512,7 @@
 <!-- ==================== EQS (screener) screen ==================== -->
 <div class="screen" id="screen-eqs">
   <div class="panel" style="margin:8px">
-    <div class="panel-h">EQS <span class="sub">equity screener - curated large-cap universe (not the full S&amp;P 500 - see HELP)</span>
+    <div class="panel-h">EQS <span class="sub note">equity screener - curated large-cap universe (not the full S&amp;P 500 - see HELP)</span>
       <span class="lay-btn" data-csvfrom="eqs-body" data-csvname="screener.csv" title="download results as CSV" style="margin-left:auto">&#10515; CSV</span></div>
     <div class="panel-b">
       <div class="filter-row">
@@ -539,7 +594,7 @@
 <div class="screen" id="screen-news">
   <div id="news-grid" style="display:grid; gap:8px; padding:8px; grid-template-columns: 3fr 2fr;">
     <div class="panel">
-      <div class="panel-h">MARKET WIRE <span class="sub">Yahoo &middot; CNBC &middot; MarketWatch &middot; Google News &middot; Seeking Alpha &middot; SEC</span></div>
+      <div class="panel-h">MARKET WIRE <span class="sub">Yahoo, CNBC, MarketWatch, Google News, Seeking Alpha, SEC</span></div>
       <div class="panel-b" id="wire-body" style="max-height: calc(100vh - 220px)"><div class="loading">Fetching the wire...</div></div>
     </div>
     <div style="display:flex; flex-direction:column; gap:8px; min-width:0">
@@ -595,11 +650,11 @@
        every short form and how to drive it. Nothing here is investment advice.</p>
 
     <p class="help-nav">Jump to:
-       <a href="#glossary">Glossary of short forms</a> &middot;
-       <a href="#commands">Command line</a> &middot;
-       <a href="#blocks">Your screen &amp; blocks</a> &middot;
-       <a href="#charting">Charting</a> &middot;
-       <a href="#faq">FAQ</a> &middot;
+       <a href="#glossary">Glossary of short forms</a> /
+       <a href="#commands">Command line</a> /
+       <a href="#blocks">Your screen &amp; blocks</a> /
+       <a href="#charting">Charting</a> /
+       <a href="#faq">FAQ</a> /
        <a href="#tips">Tips</a></p>
 
     <h2 id="glossary">GLOSSARY - WHAT THE SHORT FORMS MEAN</h2>
@@ -709,9 +764,10 @@
     <p>Everything on these screens is also exposed as MCP tools:
        <span class="cmd-ex">howlet mcp</span> - see the README for Claude Code / Claude Desktop setup.</p>
     <h2>SOURCES</h2>
-    <p>SEC EDGAR (13F holdings, XBRL fundamentals) &middot; OpenFIGI (CUSIP&rarr;ticker) &middot;
-       Yahoo Finance (quotes/charts) &middot; Yahoo/CNBC/MarketWatch/SEC RSS (news) &middot;
-       CoinGecko/Coinpaprika (crypto market caps) &middot; Federal Register (SEC rulemaking). All free, no API keys.</p>
+    <p>SEC EDGAR (13F holdings, XBRL fundamentals), OpenFIGI (CUSIP&rarr;ticker),
+       Yahoo Finance (quotes/charts), Yahoo/CNBC/MarketWatch/SEC RSS (news),
+       CoinGecko/Coinpaprika (crypto market caps), Federal Register (SEC rulemaking).
+       All free, no API keys.</p>
   </div>
 </div>
 
@@ -726,7 +782,6 @@
   <span class="fkey" data-cmd="ECO"><b>F7</b> ECO</span>
   <span class="fkey" data-cmd="PF"><b>F8</b> PF</span>
   <span class="fkey" data-cmd="HELP"><b>F9</b> HELP</span>
-  <span class="fkey dim">| SOURCES: SEC EDGAR &middot; YAHOO &middot; OPENFIGI &middot; COINGECKO &middot; ECB/FRANKFURTER &middot; FED REGISTER &middot; CNBC &middot; MARKETWATCH &middot; GOOGLE NEWS &middot; SEEKING ALPHA &middot; TREASURY &middot; BLS &middot; FED &middot; FRED (OPT)</span>
 </div>
 <div id="footer">
   13F data reports quarter-end long US equity positions with up to a ~45 day lag; excludes shorts, most options and cash.
@@ -1001,7 +1056,7 @@ function newsItemsHtml(items) {
     const when = i.published ? new Date(i.published).toLocaleString() : "";
     return `<div class="news-item">
       <a href="${esc(i.link)}" target="_blank" rel="noopener noreferrer">${esc(i.title)}</a>
-      <div class="news-meta"><span class="news-src">${esc(i.source)}</span>${i.symbol ? " &middot; " + esc(i.symbol) : ""}${when ? " &middot; " + esc(when) : ""}</div>
+      <div class="news-meta"><span class="news-src">${esc(i.source)}</span>${i.symbol ? ", " + esc(i.symbol) : ""}${when ? ", " + esc(when) : ""}</div>
     </div>`;
   }).join("");
 }
@@ -1034,34 +1089,45 @@ let activeIndicators = []; // {name, paneId, main}
 function initKlineChart() {
   if (klineChart || typeof klinecharts === "undefined") return;
   klineChart = klinecharts.init(document.getElementById("kline-chart"));
+  // Read the palette off :root instead of restating it. The chart's theme was
+  // a second hardcoded copy of the same 8 colours, so retuning the tokens
+  // silently left the chart on the old brand.
+  const T = (name) =>
+    getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const c = {
+    bg: T("--bg"), hair: T("--hair"), border: T("--border"),
+    amber: T("--amber"), amberDim: T("--amber-dim"),
+    text: T("--text"), dim: T("--dim"),
+    up: T("--up"), down: T("--down"), cyan: T("--cyan"),
+  };
   klineChart.setStyles({
     grid: {
-      horizontal: { color: "#141414" },
-      vertical: { color: "#141414" },
+      horizontal: { color: c.hair },
+      vertical: { color: c.hair },
     },
     candle: {
-      priceMark: { last: { upColor: "#00d26a", downColor: "#ff433d" } },
-      tooltip: { text: { color: "#d8d8d8" } },
+      priceMark: { last: { upColor: c.up, downColor: c.down } },
+      tooltip: { text: { color: c.text } },
       bar: {
-        upColor: "#00d26a", downColor: "#ff433d",
-        upBorderColor: "#00d26a", downBorderColor: "#ff433d",
-        upWickColor: "#00d26a", downWickColor: "#ff433d",
+        upColor: c.up, downColor: c.down,
+        upBorderColor: c.up, downBorderColor: c.down,
+        upWickColor: c.up, downWickColor: c.down,
       },
     },
     indicator: {
-      tooltip: { text: { color: "#7a7a7a" } },
+      tooltip: { text: { color: c.dim } },
     },
-    xAxis: { tickText: { color: "#7a7a7a" } },
-    yAxis: { tickText: { color: "#7a7a7a" } },
-    separator: { color: "#2a2a2a" },
+    xAxis: { tickText: { color: c.dim } },
+    yAxis: { tickText: { color: c.dim } },
+    separator: { color: c.border },
     crosshair: {
-      horizontal: { line: { color: "#555" }, text: { backgroundColor: "#ff9900", color: "#000" } },
-      vertical: { line: { color: "#555" }, text: { backgroundColor: "#ff9900", color: "#000" } },
+      horizontal: { line: { color: c.dim }, text: { backgroundColor: c.amber, color: c.bg } },
+      vertical: { line: { color: c.dim }, text: { backgroundColor: c.amber, color: c.bg } },
     },
     overlay: {
-      point: { color: "#ff9900", borderColor: "#b36b00" },
-      line: { color: "#4dd7fa" },
-      text: { color: "#000", backgroundColor: "#ff9900" },
+      point: { color: c.amber, borderColor: c.amberDim },
+      line: { color: c.cyan },
+      text: { color: c.bg, backgroundColor: c.amber },
     },
   });
   // Sensible defaults; add/remove freely from the picker - no cap.
@@ -1188,7 +1254,7 @@ async function loadEvents(symbol) {
         <span class="k">Next earnings</span><span class="v">${esc(e.next_earnings_date || "unknown")}</span>
         <span class="k">Analyst view</span><span class="v">${esc(e.analyst_recommendation || "n/a")}</span>
       </div>
-      ${counts ? `<div class="dim" style="padding:2px 6px">Strong buy ${counts.strong_buy ?? 0} &middot; Buy ${counts.buy ?? 0} &middot; Hold ${counts.hold ?? 0} &middot; Sell ${counts.sell ?? 0} &middot; Strong sell ${counts.strong_sell ?? 0}</div>` : ""}
+      ${counts ? `<div class="dim" style="padding:2px 6px">Strong buy ${counts.strong_buy ?? 0}, Buy ${counts.buy ?? 0}, Hold ${counts.hold ?? 0}, Sell ${counts.sell ?? 0}, Strong sell ${counts.strong_sell ?? 0}</div>` : ""}
       <div class="dim" style="padding:4px 6px 0">Recent DEF 14A (shareholder meeting) filings:</div>
       ${meetings ? `<table><tbody>${meetings}</tbody></table>` : '<div class="loading">None on file.</div>'}
     `;
@@ -1649,7 +1715,7 @@ async function loadWManagerPortfolio(el, cfg) {
     <td class="num">${fmtMoneyK(r.value_usd)}</td>
     <td class="num">${fmtNum(r.weight_pct, 1)}%</td>
   </tr>`).join("");
-  el.innerHTML = `<div class="dim" style="padding:2px 6px">period ${esc(p.period_of_report)} &middot; ${fmtMoneyK(p.total_value_usd)} total &middot; ${p.position_count} positions</div>
+  el.innerHTML = `<div class="dim" style="padding:2px 6px">period ${esc(p.period_of_report)}, ${fmtMoneyK(p.total_value_usd)} total, ${p.position_count} positions</div>
     <table><thead><tr><th>#</th><th>TKR</th><th>ISSUER</th><th class="num">%CHG</th><th class="num">VALUE</th><th class="num">WT</th></tr></thead>
     <tbody>${rows}</tbody></table>`;
 }
@@ -1862,7 +1928,7 @@ async function loadWFilings(el, cfg) {
 async function loadWFund(el, cfg) {
   const d = await getJSON("/api/fund/" + encodeURIComponent(cfg.symbol) + "?top=25");
   const total = d.net_assets;
-  el.innerHTML = `<div class="dim" style="padding:2px 6px">${esc(d.fund)} &middot; ${esc(d.report_period_date || "?")} &middot; net ${fmtMoneyK(total)} &middot; ${d.position_count} positions</div>
+  el.innerHTML = `<div class="dim" style="padding:2px 6px">${esc(d.fund)}, ${esc(d.report_period_date || "?")}, net ${fmtMoneyK(total)}, ${d.position_count} positions</div>
     <table><thead><tr><th>NAME</th><th class="num">VALUE</th><th class="num">WEIGHT</th></tr></thead>
     <tbody>${d.holdings.map(h => `<tr>
       <td class="issuer" title="${esc(h.title)}">${esc(h.name)}</td>
@@ -1875,7 +1941,7 @@ async function loadWFxMatrix(el) {
   const d = await getJSON("/api/fx");
   if (!d.matrix) { el.innerHTML = '<div class="loading">FX rates unavailable right now (ECB/Frankfurter unreachable).</div>'; return; }
   const cur = d.currencies;
-  el.innerHTML = `<div class="dim" style="padding:2px 6px">ECB reference rates &middot; ${esc(d.date || "?")} &middot; row &rarr; column</div>
+  el.innerHTML = `<div class="dim" style="padding:2px 6px">ECB reference rates, ${esc(d.date || "?")}, row &rarr; column</div>
     <table><thead><tr><th></th>${cur.map(c => `<th class="num">${esc(c)}</th>`).join("")}</tr></thead>
     <tbody>${cur.map(a => `<tr><td><b>${esc(a)}</b></td>${cur.map(b => {
       const r = d.matrix[a][b];

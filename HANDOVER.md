@@ -6,6 +6,248 @@ Newest session first.
 
 ---
 
+# Session 2026-07-25: cold-start audit, Schwab read-only plan, dashboard design overhaul
+
+Written just after midnight on 2026-07-26; dated 07-25 to match the work
+and the external log's Session 3.
+
+## What was asked
+
+Three things, in order: (1) analyse the repo cold - where did we stop and
+what's next - plus how to connect a Schwab Trader API to the dashboard;
+(2) run a four-step gated design overhaul of `dashboard.html` through the
+`design-taste-frontend` (tasteskill v2) skill: audit, mode declaration,
+implementation, completion audits, stopping for approval between each;
+(3) settle whether this project needs a database.
+
+## What was done
+
+### 1. Cold audit - the docs were the least reliable thing in the repo
+
+This extends S11 (2026-07-17 part 5), which left publish as an open item.
+It is no longer open, and both hand-off files said otherwise:
+
+- `CLAUDE.md`'s roadmap listed **"Publish" as next-feature #1** for a
+  package that had been live on PyPI for a week.
+- `HANDOVER.md`'s newest entry was 2026-07-17 part 5, a full session
+  behind reality (see the GAP note below).
+
+Verified the real state live rather than trusting either file:
+
+| Claim | Check | Result |
+| --- | --- | --- |
+| PyPI publish | `pypi.org/pypi/howlet/json` | **0.8.0 live, only release** |
+| GitHub + CI | `git log origin/main` | `origin/main` == local at `4c75cf7` |
+| Tests | `PYTHONPATH=src pytest tests/` | **145 passed** in 4.4s |
+| Lint | `ruff check .` | All checks passed |
+| Release tag | `git tag` | **EMPTY** - 0.8.0 shipped untagged |
+
+### 2. Live-found bug: the editable install has been broken for a week
+
+The suite initially failed to collect **23 of 23 test modules** with
+`ModuleNotFoundError: No module named 'howlet'`, while `pip show howlet`
+reported 0.8.0 installed. Root cause:
+`site-packages/__editable__.howlet-0.8.0.pth` contains one line,
+`D:\src\edgar\src` - the **pre-rename path**, gone since S11 renamed
+`D:\src\edgar` -> `D:\src\howlet`. So on this machine `howlet --version`
+throws out of `Scripts\howlet.exe\__main__.py` and bare `pytest tests/`
+collects nothing. Editable installs fail asymmetrically: metadata stays
+valid, only resolution breaks.
+
+Hit it a second time from a different direction: `preview_start` runs
+`python -m howlet.cli` and died the same way. Fixed properly by adding
+`"PYTHONPATH": "src"` to the `env` block in `.claude/launch.json`, so the
+launcher works whether or not the package is installed. This also
+mattered for correctness - without it the worktree would have served
+`D:\src\howlet\src\howlet\dashboard.html` (the *main* worktree's file),
+so the whole design verification would have been against the wrong file.
+
+### 3. Schwab Trader API - planned in full, not built
+
+Established first that `D:\src\Trader\src\schwab\` is an **empty
+placeholder** (0-byte `__init__.py`); that project's live code is
+Polymarket. So there was no client to reuse anywhere.
+
+Verified the API surface from `schwab-py`'s actual `client/base.py` and
+auth docs, not from memory:
+
+- `GET /trader/v1/accounts/accountNumbers` -> plain number to `hashValue`
+- `GET /trader/v1/accounts/{hash}?fields=positions`
+- `GET /trader/v1/accounts/{hash}/orders`, `.../transactions`
+- `GET /marketdata/v1/quotes?symbols=...`
+- OAuth token endpoint `https://api.schwabapi.com/v1/oauth/token`
+- **Access token 30 minutes. Refresh token 7 days, hard, no renewal.**
+- Callback must be `https://127.0.0.1:<port>`, matching app config
+  exactly; approval to `Ready for Use` is manual and takes days.
+
+That 7-day expiry is the whole architecture: a Schwab panel can never be
+"set up once", so it goes in the **fragile tier beside `yahoo_auth.py`**
+where consumers degrade and never raise, rendering
+`SCHWAB - RE-AUTH REQUIRED` and never blocking a 13F panel. Reconciled
+with the "no required API key, ever" hard rule by making it an optional
+FRED-style enricher: env credentials only
+(`SCHWAB_APP_KEY`/`SCHWAB_APP_SECRET`/`SCHWAB_CALLBACK_URL`), token cache
+at `~/.howlet/schwab_token.json`, gitignored, never a repo file (S11's
+credential lesson applied). Chose the **paste-the-redirect-URL** flow
+over a local HTTPS listener so no self-signed cert ships in the package.
+
+Plan: new `src/howlet/schwab.py`; `broker_positions_view` /
+`broker_balances_view` / `broker_orders_view` in `views.py`, each guarded
+by `is_connected()` returning `{"connected": false, "reason": ...}`;
+three routes in `dashboard.py`; three MCP tools (**27 -> 30**); three
+blocks in `dashboard.html`'s registry; `howlet schwab-login` +
+`howlet positions` in `cli.py`; `tests/test_schwab.py` covering token
+refresh, 7-day expiry -> degraded, position parsing, disconnected path.
+**Zero new dependencies.** Blocked on Schwab's manual app approval.
+
+### 4. Design overhaul of `dashboard.html`
+
+The skill's own **Section 13 names dashboards and data tables as out of
+scope**, which was reported rather than ignored: findings were split
+per-surface between what applied (typography, spacing, colour, motion,
+a11y, AI-tells, the HELP/ABOUT surface) and what would have damaged a
+cockpit UI (no 20-row tables - the 13F table *is* the product; cards
+replaced by whitespace - panels carry the resize/remove controls; all
+hero rules - there is no hero).
+
+**Audit found** (mechanical, over all 2,490 lines): 9 raw greys bypassing
+the token set (~25 usages); `11px` the most-used size at 13 declarations,
+*below* the 12px base; **zero `:focus` rules and zero `transition:`
+declarations**; no `prefers-reduced-motion`; 54 middle-dots including 13
+in one line; one stray `border-radius: 6px` in an otherwise 0-radius
+system; 11 screens on one URL. Dials read 3/2/9. Already-clean by
+accident: **zero em-dashes** and zero `addEventListener("scroll")`.
+
+Declared **Redesign-Preserve**, not the Overhaul the brief asked for,
+because the brief's own completion gate required the brand accent, type
+stack and logo to survive - mutually exclusive with Overhaul. Dials
+3/2/9 -> 5/4/9 with `VISUAL_DENSITY` **locked at 9**.
+
+Shipped:
+
+- Tokenized elevation ramp: `--bg: #08090a` (off-black), `--panel`,
+  `--elev-1` (chrome), `--elev-2` (interactive), `--hair` (row dividers),
+  `--border: #2e3134`. All 9 raw greys gone.
+- Brand amber recomputed from HSL: `#ff9900` is `hsl(36, 100%, 50%)`;
+  new `#eaa53e` is `hsl(36, 80%, 58%)` - **hue held at exactly 36**,
+  saturation to the 80% cap, lightness lifted to hold contrast.
+  `--amber-dim` `#b36b00` -> `#ae7013`. `--dim` `#7a7a7a` -> `#8a8a8a`
+  (was 4.53:1 on panel, now 5.60:1).
+- All 13 `font-size: 11px` -> 12px; `th` uppercase + tracking;
+  `font-variant-numeric: tabular-nums` on numeric cells.
+- Panel surfaces: inset top highlight + tinted shadow, 2px `--amber-dim`
+  left rule on `.panel-h`, `.panel-b` padding 6px -> 8px so chrome stays
+  tight and content breathes.
+- **First `:focus-visible` styles this terminal has ever had.**
+- Motion layer: 0.13s colour transitions on interactive elements,
+  `:active { translateY(1px) }`, a `panel-in` fade masking the async
+  loading->loaded pop, all gated by a `prefers-reduced-motion` block.
+- Removed the fake `.live` blink (2s loop asserting liveness regardless
+  of feed state). Glyph and colour left byte-identical.
+- Middle-dots **54 -> 13, max 1 per line**; deleted the footer SOURCES
+  strip (13 dots, verbatim duplicate of HELP > SOURCES).
+
+## Live-found bugs this session
+
+1. **Editable install broken by the S11 rename** - see section 2 above.
+2. **KLineChart held a second, complete copy of the palette in JS.**
+   `initKlineChart` hardcoded 8 colours (`#141414` grid, `#ff9900`
+   crosshair, `#2a2a2a` separator, ...) duplicating `:root`. Retuning the
+   CSS tokens would have **silently left the chart on the old brand**,
+   invisible to any amount of CSS review, because KLineChart is themed
+   through a JS API. Replaced with a `getComputedStyle(documentElement)`
+   reader. Caught by grepping the JS for hex before editing the CSS.
+3. **13 form controls set `font-family` but never `font-size`**
+   (`#eqs-pe-max`, `#eqs-mcap-min`, `#eqs-growth-min`, `#eqs-margin-min`,
+   `#eqs-run`, `#pf-symbol`, `#pf-shares`, `#pf-add`, `#watch-input`,
+   `#watch-btn`, `#restore-classic`, `#opt-expiry`, `#import-file`), so
+   they had always rendered at the UA default 13.33px in a *proportional*
+   metric inside a monospace terminal. Pre-existing; invisible to source
+   grep since you cannot grep for a missing declaration. Found by probing
+   computed styles on the live page. Fixed with one lowest-specificity
+   rule, `input, select, button, textarea { font: inherit; }`, so every
+   existing per-control rule still wins. All 28 controls now 12px.
+4. **A naive `prefers-reduced-motion` block would have hidden the tape.**
+   `#tape` is parked offscreen by `padding-left: 100%` and walked in by
+   its keyframes; killing animation alone leaves it permanently off the
+   right edge. Block also resets `padding-left: 0`.
+
+## Verified live
+
+- 145 offline tests pass; ruff clean; **zero console errors**.
+- Tokens resolving in-page; contrast computed from the live values:
+  `--text` 13.56:1, `--cyan` 11.42:1, `--up` 9.59:1, `--amber` 9.16:1,
+  `--down` 5.63:1, `--dim` 5.60:1 on panel; `--bg` on amber fill 9.44:1;
+  tightest `--amber-dim` (table headers) 4.72:1, above the 4.5 floor.
+- `prefers-reduced-motion` block confirmed **parsed by the engine** via
+  `document.styleSheets`, not merely present as text.
+- `:focus-visible` proven with a real **Tab keypress** returning
+  `solid 2px rgb(234, 165, 62)`. A scripted `.focus()` returns
+  `focus_visible: false` / `outlineStyle: none` in Chrome and briefly
+  looked like a bug in correct CSS.
+- Chart theme read back from `klineChart.getStyles()`:
+  `crosshairFill "#eaa53e"`, `grid "#1a1c1e"`, `separator "#2e3134"`,
+  `crosshairText "#08090a"` - the new tokens.
+- Live data flowing: tape at S&P 7,411.98; `AAPL DES` loaded **125 bars**
+  with 3 indicators across 14 canvases; 31 panels rendering.
+- Preservation diffs vs `HEAD`: form field ids **IDENTICAL**, `data-cmd`
+  nav values **IDENTICAL**, anchor ids + hrefs **IDENTICAL** (all 7 HELP
+  anchors), all 10 F-key labels intact, all 7 localStorage keys unchanged
+  so existing layouts and watchlists survive. Em-dash audit 0/0/0/0.
+- **Could NOT screenshot** - the browser pane was not displayed, so the
+  page never composited frames. Verified by measurement instead; before/
+  after images are still owed.
+
+## No database (measured, not assumed)
+
+`~/.howlet` totals **796 KB**: 25 holdings files (508K), 94 Form 4 files
+(236K), 28 KB `cusip_tickers.json`, 13 KB `screener_cache.json`. Timed
+the exact query a DB would exist to accelerate - the full cross-filing
+aggregation walk - over 7 runs: all 25 filings, **2,720 holding rows**,
+**1,287 unique CUSIPs**, **median 8.4 ms** (min 8.1 / max 10.6). It is
+fast because filings are immutable, making accession-keyed flat files the
+correct structure rather than a stopgap. Every genuinely slow path is a
+network throttle a DB cannot touch: OpenFIGI at 5 CUSIPs / 3s,
+`edgar_lock` at `views.py:108` serializing all EDGAR access (an
+HTTP-politeness lock, not a storage lock), and multi-MB `companyfacts`
+per screener symbol. If it is ever needed: stdlib `sqlite3` behind the
+existing two-method `FilingCache` seam, never a service. Triggers to
+revisit: multi-user shared state, the walk crossing ~200 ms, or queries
+spanning filings by something other than accession.
+
+## Pending
+
+- **Fix the editable install**: `pip install -e "D:\src\howlet"`.
+- **`git tag v0.8.0`** - still untagged.
+- **Schwab build** - blocked on manual app approval. Prerequisites are
+  the user's alone: create the app at `developer.schwab.com` selecting
+  BOTH "Accounts and Trading Production" and "Market Data Production",
+  callback `https://127.0.0.1:8182` exactly, credentials into the
+  environment by hand.
+- **Screenshot the redesign.**
+- **Mobile grids** - `#news-grid` / `#my-grid` never collapse (inline
+  `grid-template-columns`, no media query); HOME grid clipped below 420px
+  by `body { overflow-x: hidden }`. Deferred for a 3-desktop-user
+  audience.
+- **0.8.1+ release** so the live PyPI page picks up the README logo and
+  badges (PyPI freezes each release's rendered description at upload).
+- Carried from S11: FRED with a real key; pre-2013 SGML filings; N-PORT
+  depth; finer-grained EDGAR locking.
+
+## Gap in this file - CORRECTION
+
+This section originally claimed "2026-07-18 has no HANDOVER entry."
+That was wrong: the entry existed all along, written the same day, but
+sat **uncommitted in the main worktree's working directory** for a week
+- neither this session nor the 2026-07-25 external log had visibility
+into it until the merge below surfaced it. It is now committed as the
+"doc system backfill" entry immediately following this one - see its
+own "Note on gaps" section for the one remaining gap it flags (a
+per-widget manager selector and a jump-nav scrolling fix with no dated
+entry anywhere in this file).
+
+---
+
 # Session 2026-07-18: doc system backfill + CLAUDE.md/HANDOVER.md upkeep
 
 ## What was asked

@@ -7,7 +7,8 @@
       "runtimeArgs": ["-m", "howlet.cli", "dashboard", "--port", "8813"],
       "port": 8813,
       "env": {
-        "EDGAR_USER_AGENT": "Vineeth Mudda vineethmudda@gmail.com"
+        "EDGAR_USER_AGENT": "Vineeth Mudda vineethmudda@gmail.com",
+        "PYTHONPATH": "src"
       }
     }
   ]

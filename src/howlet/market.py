@@ -10,18 +10,39 @@ This is an unofficial endpoint: it can change without notice, so every
 parse failure degrades to "no quote" rather than raising, and callers must
 treat quotes as best-effort decoration on top of the SEC 13F data (which is
 the authoritative part of this tool).
+
+Two layers keep the UI from blanking when Yahoo hiccups:
+- Nasdaq's public quote API (api.nasdaq.com, keyless) is a fallback for
+  plain US stock/ETF tickers on daily bars. (Stooq, the usual free
+  fallback, now sits behind a JS proof-of-work bot wall - not usable.)
+- Every successful quote is kept in memory: reused while fresh, and served
+  stale when every source fails, so an outage shows old prices, not none.
 """
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
 
 CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+NASDAQ_INFO_URL = "https://api.nasdaq.com/api/quote/{symbol}/info"
+NASDAQ_HISTORY_URL = "https://api.nasdaq.com/api/quote/{symbol}/historical"
+
+# Reuse a quote this long before refetching; past it, keep it as the
+# stale-if-error copy. Dashboard polls are slower than this anyway.
+_FRESH_SECONDS = 30.0
+
+# Plain US tickers only (AAPL, BRK-B). Indices (^GSPC), FX (EURUSD=X),
+# futures (CL=F), crypto (BTC-USD) and foreign listings aren't on Nasdaq.
+_NASDAQ_SYMBOL = re.compile(r"^[A-Z]{1,5}(-[A-Z])?$")
+
+# Calendar days of history to request from Nasdaq per Yahoo range.
+_NASDAQ_RANGE_DAYS = {"5d": 7, "1mo": 31, "3mo": 92, "6mo": 183, "1y": 366}
 
 # Yahoo rejects blank/robotic user agents with 429s; a plain browser UA is
 # what their own site sends and keeps the free endpoint happy.
@@ -91,6 +112,12 @@ class Quote:
         return (self.price - self.previous_close) / self.previous_close * 100.0
 
 
+def _open_stamp(day) -> datetime:
+    # 14:30 UTC = US open, like Yahoo's daily stamps; midnight UTC would
+    # render as the previous day in US timezones.
+    return datetime(day.year, day.month, day.day, 14, 30, tzinfo=timezone.utc)
+
+
 class YahooMarketClient:
     """Fetch quotes/history from Yahoo Finance's free chart endpoint."""
 
@@ -98,6 +125,8 @@ class YahooMarketClient:
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": user_agent or _DEFAULT_UA})
         self._last_request_at = 0.0
+        # (symbol, range, interval) -> (fetched_at monotonic, Quote)
+        self._cache: dict[tuple[str, str, str], tuple[float, Quote]] = {}
 
     def _get(self, url: str, **kwargs) -> requests.Response:
         resp: Optional[requests.Response] = None
@@ -127,7 +156,24 @@ class YahooMarketClient:
         Never raises for a bad/unknown symbol - a dashboard row without a
         price is better than a dashboard that 500s because one CUSIP mapped
         to a delisted ticker.
+
+        Order: fresh cache -> Yahoo -> Nasdaq (daily bars only) -> stale
+        cache -> None.
         """
+        key = (symbol, range_, interval)
+        cached = self._cache.get(key)
+        if cached and time.monotonic() - cached[0] < _FRESH_SECONDS:
+            return cached[1]
+
+        quote = self._yahoo_quote(symbol, range_, interval)
+        if quote is None and interval == "1d":
+            quote = self._nasdaq_quote(symbol, range_)
+        if quote is None:
+            return cached[1] if cached else None
+        self._cache[key] = (time.monotonic(), quote)
+        return quote
+
+    def _yahoo_quote(self, symbol: str, range_: str, interval: str) -> Optional[Quote]:
         url = CHART_URL.format(symbol=symbol)
         try:
             resp = self._get(url, params={"range": range_, "interval": interval})
@@ -143,6 +189,124 @@ class YahooMarketClient:
         if quote is not None and interval == "1d" and len(quote.sparkline) >= 2:
             quote.previous_close = quote.sparkline[-2]
         return quote
+
+    def _nasdaq_json(self, url: str, asset_class: str, **params) -> Optional[dict]:
+        try:
+            body = self._get(url, params={"assetclass": asset_class, **params}).json()
+        except (requests.RequestException, ValueError):
+            return None
+        return body.get("data") if isinstance(body, dict) else None
+
+    def _nasdaq_quote(self, symbol: str, range_: str) -> Optional[Quote]:
+        """Daily-bar Quote from api.nasdaq.com, or None. Same shape as Yahoo's."""
+        days = _NASDAQ_RANGE_DAYS.get(range_)
+        if days is None or not _NASDAQ_SYMBOL.match(symbol):
+            return None
+        nsym = symbol.replace("-", ".")  # Nasdaq spells BRK-B as BRK.B
+        info_url = NASDAQ_INFO_URL.format(symbol=nsym)
+        # A symbol is one asset class; "stocks" for SPY is "Symbol not exists".
+        for asset_class in ("stocks", "etf"):
+            info = self._nasdaq_json(info_url, asset_class)
+            if info:
+                break
+        else:
+            return None
+        today = datetime.now(timezone.utc).date()
+        hist = self._nasdaq_json(
+            NASDAQ_HISTORY_URL.format(symbol=nsym),
+            asset_class,
+            fromdate=(today - timedelta(days=days)).isoformat(),
+            todate=today.isoformat(),
+            limit=400,
+        )
+        return self._parse_nasdaq(symbol, info, hist)
+
+    @staticmethod
+    def _parse_nasdaq(symbol: str, info: dict, hist: Optional[dict]) -> Optional[Quote]:
+        def num(v) -> Optional[float]:
+            try:
+                return float(str(v).replace("$", "").replace(",", "").replace("%", ""))
+            except (TypeError, ValueError):
+                return None
+
+        primary = info.get("primaryData") or {}
+        price = num(primary.get("lastSalePrice"))
+        if price is None:
+            return None
+        net = num(primary.get("netChange"))
+        trade_day = None
+        try:  # "Oct 19, 2026 11:34 AM ET"
+            trade_day = datetime.strptime(
+                primary["lastTradeTimestamp"][:12].rstrip(), "%b %d, %Y"
+            ).date()
+        except (KeyError, TypeError, ValueError):
+            pass
+
+        bars = []  # (date, o, h, l, c, v), oldest first
+        rows = ((hist or {}).get("tradesTable") or {}).get("rows") or []
+        for r in reversed(rows):
+            try:
+                day = datetime.strptime(r["date"], "%m/%d/%Y").date()
+            except (KeyError, TypeError, ValueError):
+                continue
+            c = num(r.get("close"))
+            if c is None:
+                continue
+            bars.append(
+                (
+                    day,
+                    num(r.get("open")) or c,
+                    num(r.get("high")) or c,
+                    num(r.get("low")) or c,
+                    c,
+                    num(r.get("volume")) or 0.0,
+                )
+            )
+        # Nasdaq history stops at the last close; Yahoo's daily series ends
+        # with the live session, so add today's bar to keep the same shape.
+        if trade_day and (not bars or bars[-1][0] < trade_day):
+            bars.append(
+                (
+                    trade_day,
+                    price,
+                    price,
+                    price,
+                    price,
+                    num(primary.get("volume")) or 0.0,
+                )
+            )
+
+        def low_high(label: str) -> tuple[Optional[float], Optional[float]]:
+            value = ((info.get("keyStats") or {}).get(label) or {}).get("value", "")
+            parts = [num(p) for p in str(value).split(" - ")]
+            if len(parts) != 2 or None in parts:
+                return None, None
+            return min(parts), max(parts)  # "High/Low:" label, low-high values
+
+        day_low, day_high = low_high("dayrange")
+        wk_low, wk_high = low_high("fiftyTwoWeekHighLow")
+        volume = num(primary.get("volume"))
+        return Quote(
+            symbol=symbol,
+            price=price,
+            previous_close=price - net if net is not None else None,
+            currency="USD",
+            market_time=_open_stamp(trade_day) if trade_day else None,
+            sparkline=[b[4] for b in bars],
+            history_ts=[int(_open_stamp(b[0]).timestamp()) for b in bars],
+            history_open=[b[1] for b in bars],
+            history_high=[b[2] for b in bars],
+            history_low=[b[3] for b in bars],
+            history_volume=[b[5] for b in bars],
+            long_name=info.get("companyName"),
+            exchange=info.get("exchange"),
+            instrument_type=info.get("assetClass"),
+            day_high=day_high,
+            day_low=day_low,
+            week52_high=wk_high,
+            week52_low=wk_low,
+            volume=int(volume) if volume is not None else None,
+        )
 
     def get_security(self, symbol: str, range_: str = "6mo") -> Optional[Quote]:
         """Quote + price history for one symbol, with the bar interval

@@ -894,6 +894,7 @@ function runCommand(raw) {
     return;
   }
   if (["HELP", "?", "ABOUT", "FAQ"].includes(headU) && parts.length === 1) { showScreen("help"); return; }
+  if (headU === "ALERT") { alertCommand(text); return; }
   if (headU === "PORT" && parts.length === 1) {
     showScreen("port");
     ensurePortScreen();
@@ -2220,8 +2221,9 @@ function getSeenFilings() {
 
 function renderAlertsBadge() {
   const el = $("alerts");
-  el.classList.toggle("hot", newFilings.length > 0);
-  el.innerHTML = "&#128276;" + (newFilings.length ? `<span class="cnt">${newFilings.length}</span>` : "");
+  const n = newFilings.length + getPriceAlerts().filter(a => a.fired).length;
+  el.classList.toggle("hot", n > 0);
+  el.innerHTML = "&#128276;" + (n ? `<span class="cnt">${n}</span>` : "");
 }
 
 async function pollFilingAlerts() {
@@ -2246,23 +2248,24 @@ async function pollFilingAlerts() {
   }
 }
 
-function toggleAlertsPanel() {
+function toggleAlertsPanel(forceOpen = false) {
   const panel = $("alerts-panel");
-  if (panel.classList.contains("open")) { panel.classList.remove("open"); return; }
+  if (panel.classList.contains("open") && !forceOpen) { panel.classList.remove("open"); return; }
   if ("Notification" in window && Notification.permission === "default") {
     Notification.requestPermission(); // user gesture: safe point to ask
   }
   const notifState = !("Notification" in window) ? "not supported by this browser"
     : Notification.permission === "granted" ? "on" : "off (blocked or not yet allowed)";
-  panel.innerHTML = newFilings.length
+  panel.innerHTML = priceAlertsHtml() + (newFilings.length
     ? `<div class="dim" style="margin-bottom:4px">NEW 13F FILINGS SINCE YOU LAST LOOKED &middot; desktop notifications: ${esc(notifState)}</div>`
       + newFilings.map(f => `<div class="news-item">
           <span class="fkey" data-cmd="${esc(f.label)} PORT" style="color:var(--amber)">${esc(f.label.toUpperCase())}</span>
           <span class="dim">period ${esc(f.period_of_report || "?")} &middot; filed ${esc(f.filing_date)}</span>
         </div>`).join("")
-      + `<div style="margin-top:6px"><span class="lay-btn" id="alerts-dismiss">MARK ALL SEEN</span></div>`
     : `<div class="dim">No new 13F filings from tracked managers since you last looked.<br>
-       Checked on load and every 30 minutes. Desktop notifications: ${esc(notifState)}.</div>`;
+       Checked on load and every 30 minutes. Desktop notifications: ${esc(notifState)}.</div>`)
+    + (newFilings.length || getPriceAlerts().some(a => a.fired)
+      ? `<div style="margin-top:6px"><span class="lay-btn" id="alerts-dismiss">MARK ALL SEEN</span></div>` : "");
   panel.classList.add("open");
 }
 
@@ -2271,8 +2274,80 @@ function dismissAlerts() {
   newFilings.forEach(f => { seen[f.cik] = f.accession_number; });
   localStorage.setItem(SEEN_FILINGS_KEY, JSON.stringify(seen));
   newFilings = [];
+  savePriceAlerts(getPriceAlerts().filter(a => !a.fired)); // one-shot: seen = done
   renderAlertsBadge();
   $("alerts-panel").classList.remove("open");
+}
+
+/* ---------- price alerts ----------
+   One-shot "SYM > PRICE" / "SYM < PRICE" rules in localStorage, checked
+   every minute via /api/quotes while this tab is open. A fired alert
+   stays in the bell until MARK ALL SEEN. */
+const PRICE_ALERTS_KEY = "howlet_price_alerts_v1";
+
+function getPriceAlerts() {
+  try {
+    const d = JSON.parse(localStorage.getItem(PRICE_ALERTS_KEY) || "[]");
+    if (Array.isArray(d)) return d;
+  } catch (e) {}
+  return [];
+}
+
+function savePriceAlerts(list) {
+  localStorage.setItem(PRICE_ALERTS_KEY, JSON.stringify(list));
+}
+
+function alertCommand(text) {
+  const m = text.match(/^ALERT\s+([A-Za-z0-9.^=-]+)\s*([<>])\s*(\d+(?:\.\d+)?)$/i);
+  if (!m) {
+    if (text.trim().toUpperCase() !== "ALERT") setStatus("Usage: ALERT AAPL > 350  or  ALERT AAPL < 300", true);
+    toggleAlertsPanel(true);
+    return;
+  }
+  const list = getPriceAlerts();
+  list.push({ id: newId(), sym: m[1].toUpperCase(), op: m[2], px: parseFloat(m[3]), fired: null });
+  savePriceAlerts(list);
+  setStatus(`Alert set: ${m[1].toUpperCase()} ${m[2]} ${m[3]}`);
+  pollPriceAlerts();
+}
+
+async function pollPriceAlerts() {
+  const list = getPriceAlerts();
+  const syms = [...new Set(list.filter(a => !a.fired).map(a => a.sym))].slice(0, 30); // /api/quotes cap
+  if (!syms.length) return;
+  let rows;
+  try { rows = await getJSON("/api/quotes?symbols=" + encodeURIComponent(syms.join(","))); } catch (e) { return; }
+  const px = {};
+  (rows || []).forEach(r => { px[r.symbol.toUpperCase()] = r.price; });
+  let changed = false;
+  list.forEach(a => {
+    const p = px[a.sym];
+    if (a.fired || typeof p !== "number" || !(a.op === ">" ? p > a.px : p < a.px)) return;
+    a.fired = { price: p, at: new Date().toISOString() };
+    changed = true;
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(`${a.sym} ${a.op} ${a.px}`, { body: `${a.sym} is at ${fmtNum(p, 2)}.` });
+    }
+  });
+  // Re-read before saving so a rule added during the fetch isn't lost.
+  if (changed) {
+    const fired = new Map(list.filter(a => a.fired).map(a => [a.id, a.fired]));
+    savePriceAlerts(getPriceAlerts().map(a => fired.has(a.id) ? { ...a, fired: fired.get(a.id) } : a));
+    renderAlertsBadge();
+  }
+}
+
+function priceAlertsHtml() {
+  const list = getPriceAlerts();
+  const row = a => `<div class="news-item">
+      <span class="fkey" data-cmd="${esc(a.sym)} DES" style="color:var(--amber)">${esc(a.sym)}</span>
+      <span>${esc(a.op)} ${esc(fmtNum(a.px, 2))}</span>
+      ${a.fired ? `<span class="up">HIT ${esc(fmtNum(a.fired.price, 2))}</span>` : `<span class="dim">watching</span>`}
+      <span class="rm" data-alertrm="${esc(a.id)}" title="Remove alert">&times;</span>
+    </div>`;
+  return `<div class="dim" style="margin-bottom:4px">PRICE ALERTS &middot; add with <b>ALERT AAPL &gt; 350</b> &middot; checked every minute while open</div>`
+    + (list.length ? list.map(row).join("") : `<div class="dim">None set.</div>`)
+    + `<div style="border-top:1px solid var(--hair);margin:6px 0"></div>`;
 }
 
 /* ---------- boot & events ---------- */
@@ -2348,6 +2423,13 @@ async function boot() {
     // Filing-alert bell + its dropdown panel.
     if (e.target.closest("#alerts")) { toggleAlertsPanel(); return; }
     if (e.target.closest("#alerts-dismiss")) { dismissAlerts(); return; }
+    const alertRm = e.target.closest("[data-alertrm]");
+    if (alertRm) {
+      savePriceAlerts(getPriceAlerts().filter(a => a.id !== alertRm.dataset.alertrm));
+      renderAlertsBadge();
+      toggleAlertsPanel(true);
+      return;
+    }
     if (e.target.closest("#alerts-panel .fkey")) {
       // The global .fkey handler runs the command; just close the panel.
       $("alerts-panel").classList.remove("open");
@@ -2540,6 +2622,9 @@ async function boot() {
   renderAlertsBadge();
   pollFilingAlerts();
   setInterval(pollFilingAlerts, 1_800_000);
+  renderAlertsBadge(); // fired price alerts persist across reloads
+  pollPriceAlerts();
+  setInterval(pollPriceAlerts, 60_000);
   // PORT screen data (consensus/news panels) loads lazily on first visit.
 }
 

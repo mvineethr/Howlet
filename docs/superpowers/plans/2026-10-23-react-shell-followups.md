@@ -108,3 +108,20 @@ Still open:
 - Parity gaps accepted as minor: no clock, no `?cmd=`, bare PORT/DES/OPT/ALERT differ, tape is a block, no inline block
   editing, no "+ new list" in the Add-block dialog.
 - Cosmetic: DES row indent; position-history block title; debugging-playbook SKILL.md:54 stale line.
+
+## Paper trading (2026-10-24)
+Shipped: `paper.py` engine + `/api/paper*` + 3 MCP tools (27 -> 30) + `howlet paper` CLI + Portfolio → Paper tab, order
+ticket, stock-page button, Home block, Settings reset. Live-verified on a closed market: after-hours market order queues;
+a backdated limit filled from Friday's real 10:15 bar at the exact level; SPY history math; account-vs-SPY chart.
+**Unverified until the next session:** an immediate in-session market fill.
+Still open:
+- Cross-process race narrowed, not closed: a read that settles a fill still saves; MCP/CLI writes during that window can
+  be lost. Upgrade to a file lock if it ever bites. Per-pid temp files can be orphaned by a crash.
+- Early-close days (13:00) treated as a 16:00 close; day orders older than 59 days lose their placement-day bar.
+- "Today" for a position bought today counts from the previous close, not the fill price.
+- Ticket: "Cash after" ignores cash held by open buys; estimate uses the debounced symbol; dollar mode with no price
+  says "Enter a symbol and a quantity"; tiny $ amounts floor to 0 (server rejects); negative "shares after" on oversell.
+- Paper tab: Total return (live) and "vs S&P" (daily closes) can disagree; stale error not cleared after a success.
+- PaperStore.load doesn't catch OSError; `.bad-<ts>` can collide within a second; no fsync.
+- Test gaps: settle-level gap fill, stop expiry, flooring discriminated, positions table, reload after cancel, stock-page
+  button, wrong-shape file, CLI activity print, 4dp immediate-fill rounding.

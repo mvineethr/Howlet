@@ -9,3 +9,5 @@ build/
 *.csv
 .env
 assets/Gemini_Generated_Image_lu9j7flu9j7flu9j.png
+.superpowers/
+frontend/node_modules/

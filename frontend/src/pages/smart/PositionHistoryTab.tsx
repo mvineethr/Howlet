@@ -39,7 +39,7 @@ export default function PositionHistoryTab({ manager, query }: { manager: string
                       <td>{q.period_of_report ?? "?"}</td>
                       <td>
                         <span className="num">{fmtMoney(q.value_usd)}</span>
-                        <span style={{ display: "inline-block", verticalAlign: "middle", marginLeft: 8, height: 8, width: `${(q.value_usd / maxV) * 100}%`, maxWidth: 160, background: "var(--accent)", borderRadius: 3 }} />
+                        <span style={{ display: "inline-block", verticalAlign: "middle", marginLeft: 8, height: 8, width: (q.value_usd / maxV) * 160, background: "var(--accent)", borderRadius: 3 }} />
                       </td>
                       <td style={{ textAlign: "right" }}>
                         <span className="num">{fmtInt(q.shares)}</span>

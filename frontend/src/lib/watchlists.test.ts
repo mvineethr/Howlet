@@ -20,6 +20,8 @@ test("create and delete lists", () => {
   expect(deleteList({ default: [], tech: [] }, "tech")).toEqual({ default: [] });
   const only = { default: ["A"] };
   expect(deleteList(only, "default")).toBe(only);
+  const two = { default: [], tech: [] };
+  expect(deleteList(two, "default")).toBe(two);
 });
 
 test("save writes the classic shape", () => {

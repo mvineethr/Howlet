@@ -21,7 +21,7 @@ export function createList(all: Watchlists, raw: string): { all: Watchlists; nam
 }
 
 export function deleteList(all: Watchlists, name: string): Watchlists {
-  if (Object.keys(all).length <= 1 || !(name in all)) return all;
+  if (name === "default" || Object.keys(all).length <= 1 ||!(name in all)) return all;
   const { [name]: _gone, ...rest } = all;
   return rest;
 }

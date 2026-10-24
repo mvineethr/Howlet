@@ -20,7 +20,7 @@ export default function HoldingsTab() {
 
   const commit = (next: Holding[]) => { setHoldings(next); saveHoldings(next); };
   const add = () => {
-    const r = upsertHolding(holdings, sym, Number(shares));
+    const r = upsertHolding(loadHoldings(), sym, Number(shares));
     if ("error" in r) { setErr(r.error); return; }
     setErr(""); setSym(""); setShares(""); commit(r);
   };
@@ -31,7 +31,7 @@ export default function HoldingsTab() {
   const hCols: Column<Holding>[] = [
     { key: "s", label: "Symbol", render: (h) => <Ticker symbol={h.symbol} /> },
     { key: "n", label: "Shares", align: "right", render: (h) => num(fmtInt(h.shares)) },
-    { key: "x", label: "", render: (h) => <Button size="small" appearance="subtle" aria-label={`Remove ${h.symbol}`} onClick={() => commit(removeHolding(holdings, h.symbol))}>✕</Button> },
+    { key: "x", label: "", render: (h) => <Button size="small" appearance="subtle" aria-label={`Remove ${h.symbol}`} onClick={() => commit(removeHolding(loadHoldings(), h.symbol))}>✕</Button> },
   ];
   const pCols: Column<RiskPosition>[] = [
     { key: "s", label: "Symbol", render: (p) => <Ticker symbol={p.symbol} /> },

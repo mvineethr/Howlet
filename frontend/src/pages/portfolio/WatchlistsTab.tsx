@@ -56,22 +56,22 @@ export default function WatchlistsTab() {
     return () => { cancelled = true; };
   }, [evKey]);
 
-  const add = () => { commit(addSymbol(all, list, sym)); setSym(""); };
+  const add = () => { commit(addSymbol(getWatchlists(), list, sym)); setSym(""); };
   const create = () => {
-    const r = createList(all, newName);
+    const r = createList(getWatchlists(), newName);
     if ("error" in r) { setErr(r.error); return; }
     setErr(""); setNewName(""); setConfirm(false); commit(r.all); setList(r.name);
   };
   const del = () => {
     if (!confirm) { setConfirm(true); return; }
-    const next = deleteList(all, list);
+    const next = deleteList(getWatchlists(), list);
     setConfirm(false); commit(next); setList(Object.keys(next)[0]);
   };
 
   const bySym = new Map((quotes.data ?? []).map((q) => [q.symbol, q]));
   const rows: QRow[] = symbols.map((s) => ({ s, q: bySym.get(s) }));
   const cols: Column<QRow>[] = [
-    { key: "x", label: "", render: (r) => <Button size="small" appearance="subtle" aria-label={`Remove ${r.s}`} onClick={() => commit(removeSymbol(all, list, r.s))}>✕</Button> },
+    { key: "x", label: "", render: (r) => <Button size="small" appearance="subtle" aria-label={`Remove ${r.s}`} onClick={() => commit(removeSymbol(getWatchlists(), list, r.s))}>✕</Button> },
     { key: "s", label: "Symbol", render: (r) => <Ticker symbol={r.s} /> },
     { key: "n", label: "Name", render: (r) => <span style={{ color: "var(--dim)" }}>{r.q ? r.q.name ?? "" : quotes.data ? "no data" : ""}</span> },
     { key: "p", label: "Price", align: "right", render: (r) => num(r.q ? fmtNum(r.q.price) : "—") },
@@ -102,7 +102,7 @@ export default function WatchlistsTab() {
         <Input aria-label="New list" placeholder="New list" value={newName} onChange={(_, d) => setNewName(d.value)}
           onKeyDown={(e) => { if (e.key === "Enter") create(); }} />
         <Button onClick={create}>Create</Button>
-        <Button disabled={Object.keys(all).length <= 1} onClick={del}>{confirm ? "Confirm delete" : "Delete list"}</Button>
+        <Button disabled={list === "default" || Object.keys(all).length <= 1} onClick={del}>{confirm ? "Confirm delete" : "Delete list"}</Button>
         <Input aria-label="Add symbol" placeholder="Add symbol" value={sym} onChange={(_, d) => setSym(d.value)}
           onKeyDown={(e) => { if (e.key === "Enter") add(); }} />
         <Button appearance="primary" onClick={add}>Add</Button>

@@ -1,3 +1,4 @@
+import PaperBlock from "./PaperBlock";
 import type { JSX } from "react";
 import { Body1 } from "@fluentui/react-components";
 import type { HomeState } from "../lib/legacy";
@@ -42,6 +43,7 @@ export const BLOCKS: Record<string, Entry> = {
   filings: { label: "SEC filings", needs: "symbol", defaultSize: { w: 6, h: 10 }, render: (c, r) => <FilingsPanel symbol={c.symbol} title={`SEC filings · ${c.symbol}`} onRemove={r} /> },
   "fx-matrix": { label: "FX cross rates", needs: null, defaultSize: { w: 7, h: 10 }, render: (_c, r) => <FxTab onRemove={r} /> },
   fund: { label: "ETF/fund holdings", needs: "symbol", defaultSize: { w: 7, h: 12 }, render: (c, r) => <FundPanel symbol={c.symbol} top={25} onRemove={r} /> },
+  paper: { label: "Paper account", needs: null, defaultSize: { w: 6, h: 8 }, render: (_c, r) => <PaperBlock onRemove={r} /> },
 };
 
 export function blockFor(type: string): Entry {

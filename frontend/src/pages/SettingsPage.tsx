@@ -1,11 +1,12 @@
 import {
-  Button, Card, Checkbox, Dropdown, Field, Input, Option, Radio, RadioGroup, Switch, Text, Title3, Subtitle2,
+  Button, Card, Checkbox, Dialog, DialogActions, DialogBody, DialogContent, DialogSurface, DialogTitle, Dropdown, Field, Input, Option, Radio, RadioGroup, Switch, Text, Title3, Subtitle2,
 } from "@fluentui/react-components";
 import { ArrowUp16Regular, ArrowDown16Regular } from "@fluentui/react-icons";
 import { useRef, useState } from "react";
 import { useRoute } from "../lib/route";
 import { useApi } from "../lib/useApi";
 import { api } from "../lib/api";
+import { parseNum } from "../lib/paper";
 import { useSettings, PAGE_IDS, type PageId, type Settings } from "../lib/settings";
 import { PAGE_META } from "../shell/Rail";
 import { resetHome } from "../lib/homeState";
@@ -37,6 +38,38 @@ function TrackedManagers() {
         <Button disabled={!valid} onClick={() => { if (!list.includes(cik.trim())) toggle(cik.trim(), true); setCik(""); }}>Add CIK</Button>
       </div>
     </Field>
+  );
+}
+
+function PaperReset() {
+  const [cash, setCash] = useState("100000");
+  const [confirm, setConfirm] = useState(false);
+  const [msg, setMsg] = useState("");
+  const amount = parseNum(cash);
+  const run = async () => {
+    setConfirm(false);
+    try { await api.paperReset(amount!); setMsg(`Paper account reset with $${amount!.toLocaleString("en-US")}. The old one is archived.`); }
+    catch (e) { setMsg(e instanceof Error ? e.message : String(e)); }
+  };
+  return (
+    <>
+      <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+        {/* the Input must be the Field's direct child so the label targets it */}
+        <Field label="Paper starting cash"><Input inputMode="decimal" value={cash} onChange={(_, d) => setCash(d.value)} /></Field>
+        <Button disabled={amount == null || amount <= 0} onClick={() => setConfirm(true)}>Reset paper account…</Button>
+      </div>
+      {msg && <Text role="status">{msg}</Text>}
+      <Dialog open={confirm} onOpenChange={(_, d) => setConfirm(d.open)}>
+        <DialogSurface><DialogBody>
+          <DialogTitle>Reset paper account?</DialogTitle>
+          <DialogContent>Your positions and order history move to the archive and a new account starts with ${amount?.toLocaleString("en-US")}.</DialogContent>
+          <DialogActions>
+            <Button appearance="secondary" onClick={() => setConfirm(false)}>Cancel</Button>
+            <Button appearance="primary" onClick={run}>Reset</Button>
+          </DialogActions>
+        </DialogBody></DialogSurface>
+      </Dialog>
+    </>
   );
 }
 
@@ -140,6 +173,10 @@ export default function SettingsPage() {
           <input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importState(e.target.files[0])} />
         </div>
         {msg && <Text role="status">{msg}</Text>}
+      </Card>
+
+      <Card><Subtitle2>Paper account</Subtitle2>
+        <PaperReset />
       </Card>
 
       <Card><Subtitle2>Help &amp; glossary</Subtitle2>

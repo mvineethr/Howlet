@@ -176,7 +176,7 @@ day). Browser localStorage holds watchlists, personal portfolio, layout.
 
 ## Status
 
-All working and verified live. The React app (`frontend/`, built into `static/app/`, served at `/`) is the only UI; the classic dashboard was retired 2026-10-24. Pages: Home (tabs, 18 block types, named layout snapshots, multiple watchlists), Markets (stocks/crypto/FX/economy), Smart Money (managers, consensus, insider buys, position history, full-text search, funds), Screener, News, Portfolio (watchlists, holdings & risk), Settings (+ Help), and per-stock pages (overview/events/studies/ORB, KLineChart chart, financials, holders/insiders/filings, news, options). Each surface exists as CLI +
+All working and verified live. The React app (`frontend/`, built into `static/app/`, served at `/`) is the only UI; the classic dashboard was retired 2026-10-24. Pages: Home (tabs, 18 block types, named layout snapshots, multiple watchlists), Markets (stocks/crypto/FX/economy), Smart Money (managers, consensus, insider buys, position history, full-text search, funds), Screener, News, Portfolio (watchlists, holdings & risk), Settings (+ Help), and per-stock pages (overview/events/studies/ORB, KLineChart chart, financials, holders/insiders/filings, news, options). Portfolio → Paper: a fake-money paper trading account (`paper.py`, `~/.howlet/paper.json`; market/limit/stop orders fill from real Yahoo bars, even while the app was closed; account vs SPY; stock-page Paper trade button; Home block; reset in Settings). Each surface exists as CLI +
 `/api/*` + MCP tool via `views.py`: Form 4 insiders, 13F position
 history, insider-buy screening, 13F filing alerts (topbar bell, 30-min
 poll), EDGAR full-text search, company filings feed, N-PORT fund

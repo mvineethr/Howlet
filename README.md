@@ -216,6 +216,14 @@ manager portfolio and changes, consensus, financials, fund holdings).
 Any CIK or preset name works, not just the managers list. First load of a
 manager is slow (keyless OpenFIGI rate limits); cached afterwards.
 
+### Paper trading (fake money)
+
+Practise without risking anything: Portfolio → **Paper** gives you a pretend account (default $100,000).
+Place market, limit or stop orders from the **Paper trade** button on any stock page. They fill against
+real (delayed) prices, including while Howlet was closed, and the tab shows your return vs simply holding
+the S&P 500. Also available as `howlet paper` (CLI) and the `paper_account` / `paper_order` /
+`paper_cancel` MCP tools. Reset lives in Settings. US stocks and ETFs only; no shorting, margin or fees.
+
 ## Plug it into your AI (MCP)
 
 The whole terminal is also an MCP server, so Claude or any MCP-capable

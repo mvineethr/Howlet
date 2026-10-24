@@ -26,7 +26,7 @@ dev = [
     "ruff>=0.4",
 ]
 mcp = [
-    "mcp>=1.2",
+    "mcp>=1.2,<2",  # mcp 2.x renamed FastMCP (mcp_server.py uses the v1 API); migrate deliberately
 ]
 
 [project.scripts]
@@ -40,4 +40,9 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-howlet = ["dashboard.html", "static/*"]
+howlet = ["static/*", "static/app/*", "static/app/assets/*"]
+
+[tool.ruff.lint]
+# ruff's long-standing defaults, pinned: ruff 0.16 widened the default rule set
+# (UP/B/S/SIM/...: 224 findings in existing code). Adopt new rules deliberately.
+select = ["E4", "E7", "E9", "F"]

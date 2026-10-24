@@ -5,7 +5,7 @@
 A free, no-API-key, open-source Bloomberg-style terminal built on SEC
 EDGAR 13F data ("what is Warren Buffett buying"), grown into a full
 market terminal: web dashboard (`howlet dashboard`), CLI, Python
-library, and an MCP server (`howlet mcp`, 27 tools) so any AI agent
+library, and an MCP server (`howlet mcp`, 30 tools) so any AI agent
 can drive it. Everything is verified live against the real APIs, not
 just offline mocks - that habit has caught a real bug almost every
 session (see Gotchas).
@@ -29,6 +29,7 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 | `fundamentals.py` | SEC XBRL companyfacts: annual 10-K metrics, shares outstanding (dei) |
 | `indicators.py` | Pure-math studies: SMA/EMA/RSI/MACD/Bollinger/ORB |
 | `risk.py` | Pure-math portfolio risk: volatility, max drawdown, Sharpe |
+| `paper.py` | Paper trading (fake money): append-only order ledger in `~/.howlet/paper.json`, fills market/limit/stop orders from real Yahoo bars on every read (`settle`), SPY benchmark |
 | `screener.py` | Screener over a curated universe (SEC fundamentals + chart quotes only) |
 | `news.py` | RSS aggregation: Yahoo/CNBC/CNBC Earnings/MarketWatch/Google News/Seeking Alpha/SEC; per-ticker feeds |
 | `events.py` | Earnings date + analyst mix (Yahoo, crumb-authed), DEF 14A proxies (EDGAR), Fed RSS |
@@ -41,8 +42,9 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 | `nport.py` | N-PORT fund holdings: ticker->series via company_tickers_mf.json, series-scoped browse-edgar for accessions, primary_doc.xml parse. UITs (SPY) have no NPORT trail |
 | `yahoo_auth.py` | Yahoo cookie+crumb workaround for walled endpoints; consumers must degrade, never raise |
 | `views.py` | Shared JSON view layer - Flask endpoints AND MCP tools both wrap these |
-| `dashboard.py` | Flask wiring only; UI lives in `dashboard.html` (single file, vanilla JS) |
-| `mcp_server.py` | FastMCP stdio server, 27 tools (optional dep: `pip install "howlet[mcp]"`) |
+| `dashboard.py` | Flask wiring only; serves the React build (`static/app/index.html`) at `/`, or a plain-text 503 if it was never built. The old vanilla-JS `dashboard.html` / `/classic` was retired 2026-10-24 |
+| `mcp_server.py` | FastMCP stdio server, 30 tools (optional dep: `pip install "howlet[mcp]"`) |
+| `frontend/` | React + Fluent UI v9 app (Vite), the only UI; builds into `static/app/`, served at `/` |
 
 ## Hard rules
 
@@ -77,11 +79,8 @@ doc. Tests: `pytest tests/` - all offline/mocked.
   path here is a network throttle a DB cannot touch. If it ever is
   needed, use stdlib `sqlite3` behind the existing two-method
   `FilingCache` seam - never a service.
-- **UI colour lives in `:root` only.** All dashboard colour comes from
-  CSS custom properties (`--bg`, `--panel`, `--elev-1/2`, `--hair`,
-  `--border`, `--amber`, `--amber-dim`, `--text`, `--dim`, `--up`,
-  `--down`, `--cyan`). Anything themed through JS must READ those tokens,
-  never restate them.
+- **UI colour lives in `frontend/src/theme/tokens.ts` only.** No hex literals
+  elsewhere in `frontend/src`; components and the KLineChart theme read tokens.
 
 ## Gotchas (each cost a live debugging session - don't re-learn them)
 
@@ -116,9 +115,10 @@ doc. Tests: `pytest tests/` - all offline/mocked.
   hand-built fixture both had the same bug once (tests green, live {}).
 - **XBRL 10-Ks tag quarterly comparatives too** - filter duration
   entries to >=300-day spans or Q4 values masquerade as annual.
-- **KLineChart is vendored** at `static/klinecharts.min.js` (+ LICENSE),
-  served by Flask's default `/static/` - no CDN at runtime. (When it was
-  CDN-loaded: the path is `dist/umd/...`; plain `dist/` 404s silently.)
+- **KLineChart comes from npm** (pinned 9.8.12), loaded as a lazy chunk
+  and bundled into `static/app` - no CDN at runtime, no vendored copy. Its
+  theme is read from the CSS variables. (When it was CDN-loaded: the path
+  is `dist/umd/...`; plain `dist/` 404s silently.)
 - **SEC resets stale keep-alive connections** on long-lived sessions
   (WinError 10054) - `_get` retries ConnectionError like a 5xx, and the
   Flask app maps every `requests.RequestException` to a JSON 502 (an
@@ -157,22 +157,16 @@ doc. Tests: `pytest tests/` - all offline/mocked.
   workaround; `pip install -e .` from the real root is the fix. Also why
   `.claude/launch.json` now sets `PYTHONPATH: src`.
 - **KLineChart's theme is a SECOND copy of the palette, in JS.** Its
-  styles come from a JS API, so it is invisible to CSS-token work and
-  will keep rendering the old brand after `:root` changes. `initKlineChart`
-  now reads the tokens via `getComputedStyle(document.documentElement)`.
-  Grep the JavaScript for hex literals before changing any colour.
-- **You cannot grep for a missing declaration.** 13 form controls set
-  `font-family: inherit` but never `font-size`, so they silently rendered
-  at the UA default (13.33px, proportional metric) inside a monospace
-  terminal. Only a computed-style probe of the live DOM finds this class
-  of bug - the source rules look complete.
-- **`prefers-reduced-motion` must restore layout preconditions, not just
-  kill animation.** `#tape` is parked offscreen by `padding-left: 100%`
-  and walked in by its keyframes; disabling the animation alone hides the
-  ticker permanently, so the block also resets `padding-left: 0`.
+  styles come from a JS API, so CSS-token work cannot reach it; it reads
+  the CSS variables. Grep the JavaScript for hex literals before changing
+  any colour.
+  (Historical, classic UI: unstyled form controls silently fell back to the
+  UA 13.33px font, and `prefers-reduced-motion` had to reset `#tape`'s
+  `padding-left` as well as its animation.)
 - **`:focus-visible` does not match a scripted `.focus()`** (Chrome wants
   real keyboard interaction). Verify focus styles with an actual Tab
   keypress or you will "find" a bug in correct CSS.
+- **Vite dev server (5173) is a different origin -> separate localStorage.** Your real watchlists/alerts only appear at `:8813`; always verify there.
 
 ## Caches (all under `~/.howlet/`)
 
@@ -182,20 +176,14 @@ day). Browser localStorage holds watchlists, personal portfolio, layout.
 
 ## Status
 
-All working and verified live. **11 screens**, one URL, no routing:
-HOME (blank slate, "+ ADD BLOCK" picker over 17 widget types, "+ TAB"
-user tabs, per-block wide/tall toggles, named layout snapshots, multiple
-named watchlists, RESTORE CLASSIC LAYOUT), PORT, DES (vendored
-KLineChart, unlimited indicators + drawing, studies incl. ORB, BACK
-button), FA, HDS, NEWS (7 feeds), MY, MKTS (STOCKS/CRYPTO toggle,
-separate spaces, remembered), EQS, ECO (Treasury/BLS/FRED/Fed + SEC
-RULEMAKING), PF risk, OPT (experimental). Each surface exists as CLI +
+All working and verified live. The React app (`frontend/`, built into `static/app/`, served at `/`) is the only UI; the classic dashboard was retired 2026-10-24. Pages: Home (tabs, 19 block types, named layout snapshots, multiple watchlists), Markets (stocks/crypto/FX/economy), Smart Money (managers, consensus, insider buys, position history, full-text search, funds), Screener, News, Portfolio (watchlists, holdings & risk), Settings (+ Help), and per-stock pages (overview/events/studies/ORB, KLineChart chart, financials, holders/insiders/filings, news, options). Portfolio → Paper: a fake-money paper trading account (`paper.py`, `~/.howlet/paper.json`; market/limit/stop orders fill from real Yahoo bars, even while the app was closed; account vs SPY; stock-page Paper trade button; Home block; reset in Settings). Each surface exists as CLI +
 `/api/*` + MCP tool via `views.py`: Form 4 insiders, 13F position
 history, insider-buy screening, 13F filing alerts (topbar bell, 30-min
 poll), EDGAR full-text search, company filings feed, N-PORT fund
 holdings (ARKK verified; UITs like SPY correctly error), FX cross-rate
-matrix, crypto top-20, `howlet warm`, EXPORT/IMPORT state backup, CSV
-export. **MCP: 27 tools.** Presets: **14 managers** (Buffett, Burry,
+matrix, crypto top-20, `howlet warm`, CSV exports (screener, manager
+portfolio/changes, consensus, financials, fund holdings), and an export/import
+state backup (Settings -> Layouts & backup, `howlet-backup-<date>.json`). Settings -> Tracked managers picks which presets and custom CIKs drive alerts, and the owl chip shows each holder's last-quarter action (new/added/trimmed/held). **MCP: 30 tools.** Presets: **14 managers** (Buffett, Burry,
 Ackman, Icahn, Tepper, Klarman, Loeb, Dalio, Druckenmiller, Marks,
 Li Lu, Einhorn/DME, Fundsmith, Tiger Global), every CIK verified live
 against a current 13F-HR. CI (ruff + pytest, 6 legs) and Docker.
@@ -206,22 +194,8 @@ at `mvineethr/Howlet` with `origin/main` == local at `4c75cf7`; CI green
 on all 6 matrix legs; 145 offline tests pass; ruff clean. Note `git tag`
 is still EMPTY despite the release.
 
-**Dashboard visual layer refreshed** (2026-07-25, uncommitted on branch
-`claude/repo-analysis-trader-api-b78191`): tokenized elevation ramp,
-brand amber desaturated 100% -> 80% saturation with hue held at exactly
-36 (`#ff9900` -> `#eaa53e`), 11px floor raised to 12px, panel surface
-treatment, first-ever `:focus-visible` styles, a motion layer with a
-`prefers-reduced-motion` block, and the fake blinking "live" dot removed
-(it asserted liveness it could not know). Chart theme now reads `:root`.
-168/102 line diff, tests still green, verified live in the browser.
-
 Known-untested: FRED with a real key; pre-2013 SGML filings (should
 error clearly, never exercised).
-
-Known-broken, deliberately deferred (audience is 3 desktop users):
-`#news-grid` and `#my-grid` set `grid-template-columns` inline with no
-media query so they never collapse; the HOME grid's `minmax(420px, 1fr)`
-is CLIPPED below 420px by `body { overflow-x: hidden }`.
 
 ## Next features (in rough priority order)
 
@@ -240,7 +214,7 @@ is CLIPPED below 420px by `body { overflow-x: hidden }`.
    -> hashValue, `/trader/v1/accounts/{hash}?fields=positions`,
    `.../orders`, `.../transactions`, `/marketdata/v1/quotes`. Access
    token 30 min; callback must be `https://127.0.0.1:<port>` exactly.
-   Plan: `schwab.py` + 3 views + 3 routes + 3 MCP tools (27 -> 30) + 3
+   Plan: `schwab.py` + 3 views + 3 routes + 3 MCP tools (30 -> 33) + 3
    blocks + `howlet schwab-login` (paste-the-redirect-URL flow, no
    shipped cert) + mocked tests. Zero new dependencies.
 3. **N-PORT depth** - disk-cache parsed NPORT filings by accession

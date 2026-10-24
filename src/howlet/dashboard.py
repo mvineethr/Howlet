@@ -1,6 +1,6 @@
 """Bloomberg-terminal-style web dashboard for Howlet.
 
-Serves a single-page dark terminal UI (see `dashboard.html`) backed by a
+Serves the React terminal UI (built from `frontend/`) backed by a
 small JSON API. All data assembly lives in `views.py` (shared with the
 `howlet mcp` AI tool server); this module is just Flask wiring.
 
@@ -25,13 +25,14 @@ import requests
 from flask import Flask, Response, jsonify, request
 
 from . import views
+from .paper import DEFAULT_START_CASH, PaperError
 from .views import Services
 
 # Kept as aliases so existing imports/tests keep working.
 DashboardServices = Services
 TAPE_SYMBOLS = views.TAPE_SYMBOLS
 
-_HTML_PATH = Path(__file__).parent / "dashboard.html"
+_APP_INDEX = Path(__file__).parent / "static" / "app" / "index.html"
 
 
 def create_app(
@@ -53,9 +54,18 @@ def create_app(
     def not_found(exc):
         return jsonify({"error": str(exc)}), 404
 
+    @app.errorhandler(PaperError)
+    def bad_request(exc):
+        return jsonify({"error": str(exc)}), 400
+
     @app.get("/")
     def index() -> Response:
-        return Response(_HTML_PATH.read_text(encoding="utf-8"), mimetype="text/html")
+        if not _APP_INDEX.exists():
+            return Response(
+                "Dashboard build missing - run `npm run build` in frontend/",
+                status=503, mimetype="text/plain",
+            )
+        return Response(_APP_INDEX.read_text(encoding="utf-8"), mimetype="text/html")
 
     @app.get("/api/managers")
     def managers():
@@ -74,15 +84,23 @@ def create_app(
     def diff(identifier: str):
         return jsonify(views.diff_view(svc, identifier))
 
+    def _managers_arg():
+        raw = request.args.get("managers", "")
+        return [m for m in raw.split(",") if m.strip()] or None
+
     @app.get("/api/consensus")
     def consensus():
         min_managers = int(request.args.get("min", 2))
         limit = int(request.args.get("limit", 20))
-        return jsonify(views.consensus_view(svc, min_managers=min_managers, limit=limit))
+        return jsonify(
+            views.consensus_view(
+                svc, min_managers=min_managers, limit=limit, managers=_managers_arg()
+            )
+        )
 
     @app.get("/api/holders/<symbol>")
     def holders(symbol: str):
-        return jsonify(views.holders_view(svc, symbol))
+        return jsonify(views.holders_view(svc, symbol, managers=_managers_arg()))
 
     @app.get("/api/position-history/<identifier>/<query>")
     def position_history(identifier: str, query: str):
@@ -127,7 +145,7 @@ def create_app(
 
     @app.get("/api/filing-alerts")
     def filing_alerts():
-        return jsonify(views.latest_filings_view(svc))
+        return jsonify(views.latest_filings_view(svc, managers=_managers_arg()))
 
     @app.get("/api/insider-buys")
     def insider_buys():
@@ -214,6 +232,32 @@ def create_app(
         holdings = body.get("holdings", [])
         range_ = body.get("range", "1y")
         return jsonify(views.risk_view(svc, holdings, range_=range_))
+
+    @app.get("/api/paper")
+    def paper_account():
+        return jsonify(views.paper_account_view(svc))
+
+    @app.get("/api/paper/history")
+    def paper_history():
+        return jsonify(views.paper_history_view(svc))
+
+    @app.post("/api/paper/orders")
+    def paper_order():
+        b = request.get_json(force=True, silent=True) or {}
+        order = views.paper_order_view(
+            svc, b.get("symbol", ""), b.get("side", ""), b.get("qty"), type=b.get("type", "market"),
+            limit=b.get("limit"), stop=b.get("stop"), tif=b.get("tif", "day"),
+        )
+        return jsonify(order), 201
+
+    @app.delete("/api/paper/orders/<order_id>")
+    def paper_cancel(order_id: str):
+        return jsonify(views.paper_cancel_view(svc, order_id))
+
+    @app.post("/api/paper/reset")
+    def paper_reset():
+        b = request.get_json(force=True, silent=True) or {}
+        return jsonify(views.paper_reset_view(svc, b.get("start_cash", DEFAULT_START_CASH)))
 
     return app
 

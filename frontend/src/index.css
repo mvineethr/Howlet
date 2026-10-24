@@ -1,0 +1,11 @@
+button, input, select, textarea { font: inherit; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-text); }
+[data-density="compact"] .fui-Card { padding: 6px; gap: 4px; }
+[data-density="compact"] td { padding-top: 1px !important; padding-bottom: 1px !important; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.dt { width: 100%; border-collapse: collapse; }
+.dt th { color: var(--dim); font-weight: 600; font-size: 0.85em; text-align: left; padding: 4px 6px;
+  border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--panel); }
+.dt td { padding: 4px 6px; border-bottom: 1px solid var(--hair); }
+.dt tbody tr:hover td { background: var(--elev-1); }

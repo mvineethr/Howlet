@@ -149,66 +149,81 @@ howlet warm
 howlet dashboard          # then open http://127.0.0.1:8813
 ```
 
-A Bloomberg-terminal-style dark dashboard in your browser, complete with
-the command line.
+A Bloomberg-terminal-style dashboard in your browser (React + Fluent UI,
+built into `src/howlet/static/app`, so no Node is needed to run it).
+A rail on the left switches pages: **Home, Markets, Smart Money,
+Screener, News, Portfolio, Settings**. `Ctrl+1`, `Ctrl+2`... jump to them
+and `Ctrl+K` focuses the command box. There is no Back button; use the
+browser's Back (Alt+Left).
 
-**HOME is yours to build.** It starts as a blank slate: "+ ADD BLOCK"
-offers 13F portfolios (pick a manager), Q/Q changes, smart-money
-consensus, watchlists (create as many named lists as you want),
-watchlist-scoped news (headlines for *only* your names), watchlist
-events (earnings dates + analyst views), insider transactions (Form 4
-buys/sells for a ticker), an insider-BUY screen across a whole
-watchlist, 13F position history (a manager's stake in one name across
-quarters), a company's SEC filings feed, ETF/fund holdings (NPORT-P),
-market news, Fed & policy, the Treasury yield curve, world markets,
-crypto top-20, and an FX cross-rate matrix. "+ TAB" adds extra tabs for
-the less-important stuff. A topbar bell polls for brand-new 13F filings
-from the tracked managers (with opt-in desktop notifications), and
-EXPORT/IMPORT in the tab bar backs up ALL of it to a JSON file. Every block has ↔ / ↕ toggles to make it full-width
-or double-height, and the LAYOUTS control in the tab bar saves named
-snapshots of your entire screen (all tabs + blocks + sizes) that you can
-reload or delete any time. One click restores the classic layout if you
-want the original look back. Everything persists in your browser. Clicking
-any symbol opens the full security screen, and its ← BACK button returns
-you to wherever you came from.
+**Home is yours to build.** It starts from a default layout; "Add block"
+opens a dialog to pick a block type (13F portfolios for a manager, Q/Q
+changes, smart-money consensus, watchlists, watchlist-scoped news and
+events, Form 4 insiders, insider-buy screen, 13F position history,
+company filings, ETF/fund holdings, market news, Fed & policy, the
+Treasury yield curve, world markets, crypto, FX matrix and more) and
+configure it. "+ Tab" adds extra Home tabs (rename or delete the active
+one with the pencil and bin buttons). The Layouts menu saves the current
+Home under a name, loads or deletes saved layouts, and restores the
+default. Everything persists in your browser; **Settings -> Layouts &
+backup** exports and imports it all as a `howlet-backup-<date>.json`
+file. A topbar bell alerts you to new 13F filings from your tracked
+managers (choose them, presets plus custom CIKs, in Settings -> Tracked
+managers), and the owl chip on a stock shows each holder's last-quarter
+action (new/added/trimmed/held). Click any symbol to open its stock page.
 
-Commands are `SECURITY FUNCTION`, like the real thing:
+**Pages**
 
-| Command | Bloomberg equivalent | What you get |
-| --- | --- | --- |
-| `AAPL DES` / `GP` | DES, GP | security screen: quote, day/52-week ranges, volume, an **open-source candlestick chart (KLineChart, Apache-2.0)** with unlimited stackable indicators (MA/EMA/BOLL/SAR/MACD/RSI/KDJ/OBV/CCI/WR/TRIX/ROC/DMI…) and drawing tools (trend lines, rays, channels, Fibonacci, annotations), computed studies incl. **ORB**, earnings date + analyst view, shareholder-meeting filings |
-| `MSFT FA` | FA | annual revenue / net income / diluted EPS / assets / operating cash flow, from SEC XBRL 10-K data |
-| `KO HDS` | HDS | which tracked famous managers hold it, with sizes and portfolio weights |
-| `buffett PORT` | PORT/13F | the home tab: a manager's latest 13F portfolio with live prices, sparklines, weights |
-| `NEWS` | TOP | dedicated news tab: market wire (Yahoo, CNBC, CNBC Earnings, MarketWatch, Google News, Seeking Alpha, SEC), Fed & policy feed, earnings/analysis |
-| `MY` | — | your personalize tab: watchlist quotes, news scoped to only your names, and upcoming earnings/analyst view/proxy filings for them |
-| `EQS` | EQS | equity screener (P/E, market cap, revenue growth, net margin) over a curated large-cap universe |
-| `ECO` | ECO/FED | Treasury yield curve, CPI/unemployment/payrolls (BLS), FRED macro series (optional free key), FOMC statements & Fed speeches, SEC rulemaking from the Federal Register |
-| `PF` | PORT (risk) | your personal portfolio: volatility, max drawdown, Sharpe ratio per position and overall |
-| `MKTS` | WEI/FXC | world markets with a STOCKS/CRYPTO toggle: global indices, FX, commodities, rates on one side; top-50 crypto by market cap (CoinGecko, keyless) on the other |
-| `AAPL OPT` | OMON | options chain (experimental: relies on an unofficial Yahoo endpoint) |
-| `HELP` | HELP | the command cheat sheet |
+- **Markets** - Stocks, Crypto, FX and Economy tabs (indices, commodities,
+  top crypto by market cap, ECB cross-rates, Treasury curve / BLS / FRED
+  macro, Fed and SEC rulemaking).
+- **Smart Money** - Managers, Consensus, Insider buys, Position history,
+  Filing search and Funds tabs.
+- **Screener** - P/E, market cap, revenue growth and net margin over a
+  curated large-cap universe (CSV export).
+- **News** - market wire, Fed & policy and earnings feeds.
+- **Portfolio** - Watchlists, and Holdings & risk (volatility, max
+  drawdown, Sharpe).
+- **Stock page** - Overview, Chart, Financials, Holders, News tabs, plus
+  Options (experimental, off until you enable it in Settings). The chart
+  is [KLineChart](https://github.com/klinecharts/KLineChart) 9.8.12
+  (Apache-2.0) from npm, bundled into `static/app`, with stackable
+  indicators and drawing tools.
 
-**Why KLineChart instead of the TradingView widget?** TradingView's free
-embed caps stacked indicators behind their subscription. KLineChart is
-Apache-2.0 open source, ships ~30 indicators and full drawing overlays
-with no limits, and renders **this terminal's own data** — no third party
-in the loop. Indicators stay applied as you flip between symbols.
+Tables export to CSV where an "Export CSV" button is shown (screener,
+manager portfolio and changes, consensus, financials, fund holdings).
 
-Plus, always on screen:
+**Command box** (`Ctrl+K`):
 
-- **World tape** — scrolling S&P 500 / NASDAQ / DOW / VIX / 10Y / crude /
-  gold / bitcoin / EUR-USD strip, refreshed every minute.
-- **Q/Q changes** — NEW / SOLD / INCREASED / DECREASED vs. the prior
-  quarter's filing.
-- **Smart money consensus** — which names multiple tracked managers hold
-  simultaneously, with per-manager conviction weights. This is the panel
-  a Bloomberg terminal doesn't give you as one screen.
-- **News** — headlines auto-scoped to the tickers on the current screen.
+| Command | Goes to |
+| --- | --- |
+| `AAPL` / `AAPL DES` | stock page, Overview |
+| `AAPL GP` (or `GIP`) | Chart |
+| `MSFT FA` | Financials |
+| `KO HDS` | Holders |
+| `AAPL CN` | stock News |
+| `AAPL OPT` (or `OMON`) | Options |
+| `buffett`, `buffett PORT`, or a CIK | that manager in Smart Money |
+| `HOME` / `DASH` | Home |
+| `MKTS` / `WEI` / `FXC` / `ECO` | Markets |
+| `NEWS` / `N` / `TOP` | News |
+| `EQS` | Screener |
+| `PF` / `MY` / `WATCH` | Portfolio |
+| `PAPER` | Portfolio, Paper tab |
+| `SETTINGS` | Settings |
+| `HELP` / `?` / `ABOUT` / `FAQ` | Help |
+| `ALERT AAPL > 350` | add a price alert |
 
-Every cyan ticker anywhere in the terminal is clickable and opens DES.
-Any CIK or preset name works, not just the dropdown. First load of a
+Any CIK or preset name works, not just the managers list. First load of a
 manager is slow (keyless OpenFIGI rate limits); cached afterwards.
+
+### Paper trading (fake money)
+
+Practise without risking anything: Portfolio → **Paper** gives you a pretend account (default $100,000).
+Place market, limit or stop orders from the **Paper trade** button on any stock page. They fill against
+real (delayed) prices, including while Howlet was closed, and the tab shows your return vs simply holding
+the S&P 500. Also available as `howlet paper` (CLI) and the `paper_account` / `paper_order` /
+`paper_cancel` MCP tools. Reset lives in Settings. US stocks and ETFs only; no shorting, margin or fees.
 
 ## Plug it into your AI (MCP)
 
@@ -231,7 +246,7 @@ Claude Desktop (`claude_desktop_config.json`):
   "env": {"EDGAR_USER_AGENT": "Your Name you@example.com"}}}}
 ```
 
-Exposed tools (27): `search_manager`, `list_managers`, `get_portfolio`,
+Exposed tools (30): `search_manager`, `list_managers`, `get_portfolio`,
 `get_portfolio_changes`, `get_consensus`, `get_holders`,
 `get_position_history` (a manager's stake across quarters),
 `get_insider_transactions` (Form 4), `screen_insider_buys` (open-market
@@ -243,7 +258,8 @@ P buys across a symbol list), `get_latest_filings` (new-13F detection),
 `get_crypto_markets`, `get_fx_matrix` (ECB cross rates),
 `get_sec_rulemaking` (Federal Register), `get_corporate_events`,
 `get_fed_calendar`, `get_macro_snapshot`, `screen_securities`,
-`get_options_chain`, `analyze_portfolio_risk`.
+`get_options_chain`, `analyze_portfolio_risk`, `paper_account`, `paper_order`,
+`paper_cancel` (fake-money paper trading).
 
 ## Data source tiers (honesty section)
 
@@ -267,8 +283,8 @@ Not everything here has the same reliability. Know what you're standing on:
   `get_macro_snapshot` MCP tool automatically add Fed funds rate, GDP,
   CPI, unemployment, 10-year yield, and 30-year mortgage rate from FRED.
   Never required — the only key-gated source in the project.
-- **Open-source charting:** the DES chart is KLineChart (Apache-2.0),
-  vendored into the package (no CDN at runtime) and fed entirely by this
+- **Open-source charting:** the stock-page chart is KLineChart (Apache-2.0),
+  installed from npm and bundled into the package (no CDN at runtime) and fed entirely by this
   terminal's own data — no indicator or drawing-tool paywalls.
 
 ## Caching
@@ -330,6 +346,26 @@ pytest tests/ -v
 
 Tests run fully offline against mocked HTTP responses — they don't hit the
 real SEC servers.
+
+## Frontend development
+
+The UI at `/` is a React + Fluent UI app in `frontend/`. The built files are
+committed under `src/howlet/static/app/`, so Node is not needed to run Howlet.
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+```bash
+npm test
+```
+
+```bash
+npm run build
+```
+
+The dev server (port 5173) has its own localStorage; your real data lives at
+`http://localhost:8813/`.
 
 ## License
 

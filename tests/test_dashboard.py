@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from howlet import dashboard
 from howlet.dashboard import create_app
 from howlet.market import Quote
 from howlet.models import FilingSummary, Holding
@@ -93,10 +94,18 @@ def test_regulatory_endpoint_wraps_federal_register(api, monkeypatch):
                      "publication_date": "2026-07-17"}]
 
 
-def test_index_serves_terminal_html(api):
+def test_root_serves_react_app_and_classic_is_gone(api):
+    root = api.get("/")
+    assert root.status_code == 200
+    assert b'<div id="root">' in root.data
+    assert api.get("/classic").status_code == 404
+
+
+def test_root_without_build_is_503(api, monkeypatch, tmp_path):
+    monkeypatch.setattr(dashboard, "_APP_INDEX", tmp_path / "missing.html")
     resp = api.get("/")
-    assert resp.status_code == 200
-    assert b"HOWLET" in resp.data
+    assert resp.status_code == 503
+    assert b"npm run build" in resp.data
 
 
 def test_managers_deduplicates_alias_ciks(api):
@@ -535,6 +544,14 @@ def test_filing_alerts_lists_latest_accessions_and_skips_failures(api, services)
     assert all(r["cik"] != broken_cik for r in data)
 
 
+def test_filing_alerts_dedupes_same_cik_in_different_spellings(api, services):
+    services.edgar.list_13f_filings.side_effect = lambda cik, limit=1: [
+        _filing(f"acc-{cik}", date(2026, 3, 31))
+    ]
+    data = api.get("/api/filing-alerts?managers=buffett,0001067983").get_json()
+    assert len(data) == 1
+
+
 def test_insider_buys_endpoint_screens_for_p_codes(api, services):
     from test_form4 import FILING, SAMPLE_FORM4_XML
 
@@ -632,3 +649,92 @@ def test_portfolio_name_fallback_fills_openfigi_misses(api, services):
     assert row["price"] == 280.0
     # The learned mapping is persisted so the fallback runs once ever.
     services.resolver.learn.assert_called_once_with("H1467J104", "CB")
+
+
+def test_resolve_managers():
+    from howlet import views
+    from howlet.presets import FAMOUS_INVESTORS
+
+    assert views.resolve_managers(None) == FAMOUS_INVESTORS
+    assert views.resolve_managers([]) == FAMOUS_INVESTORS
+    assert views.resolve_managers([" Buffett "]) == {"buffett": FAMOUS_INVESTORS["buffett"]}
+    assert views.resolve_managers(["1067983"]) == {"1067983": "1067983"}
+    assert views.resolve_managers(["ackman", "junk", "12", "12345678901"]) == {
+        "ackman": FAMOUS_INVESTORS["ackman"]
+    }
+    assert views.resolve_managers(["junk"]) == FAMOUS_INVESTORS
+
+
+def test_holders_view_reports_last_quarter_action(services):
+    from howlet import views
+
+    cur = {"1000001": "A-CUR", "1000002": "B-CUR"}
+    prior_tables = {
+        "A-PRI": [_holding("APPLE INC", "037833100", 500, 5)],
+        "B-PRI": [_holding("OTHER CO", "111111111", 500, 5)],
+    }
+    cur_tables = {
+        "A-CUR": [_holding("APPLE INC", "037833100", 1000, 10)],
+        "B-CUR": [_holding("APPLE INC", "037833100", 1000, 10)],
+    }
+
+    def list_filings(cik, limit=1):
+        pre = "A" if cik.endswith("1000001") else "B"
+        return [
+            _filing(f"{pre}-CUR", date(2026, 3, 31)),
+            _filing(f"{pre}-PRI", date(2025, 12, 31)),
+        ][:limit]
+
+    services.edgar.list_13f_filings.side_effect = list_filings
+    services.edgar.get_information_table.side_effect = lambda f: {
+        **cur_tables, **prior_tables
+    }[f.accession_number]
+    services.resolver.resolve.return_value = {"037833100": "AAPL", "111111111": "OTHR"}
+
+    data = views.holders_view(services, "AAPL", managers=list(cur))
+    actions = {h["manager"]: h["action"] for h in data["holders"]}
+    assert actions == {"1000001": "added", "1000002": "new"}
+
+
+def test_consensus_endpoint_passes_managers_param(api, services, monkeypatch):
+    from howlet import views
+
+    seen = {}
+    monkeypatch.setattr(
+        views, "consensus_view",
+        lambda svc, min_managers=2, limit=20, managers=None: seen.update(m=managers) or {},
+    )
+    api.get("/api/consensus?managers=buffett,ackman")
+    assert seen["m"] == ["buffett", "ackman"]
+    api.get("/api/consensus")
+    assert seen["m"] is None
+
+
+def test_holders_view_degrades_when_prior_filing_fails(services):
+    from howlet import views
+
+    def list_filings(cik, limit=1):
+        pre = "A" if cik.endswith("1000001") else "B"
+        return [
+            _filing(f"{pre}-CUR", date(2026, 3, 31)),
+            _filing(f"{pre}-PRI", date(2025, 12, 31)),
+        ][:limit]
+
+    tables = {
+        "A-CUR": [_holding("APPLE INC", "037833100", 1000, 10)],
+        "B-CUR": [_holding("APPLE INC", "037833100", 1000, 10)],
+        "B-PRI": [_holding("APPLE INC", "037833100", 500, 5)],
+    }
+
+    def table(f):
+        if f.accession_number == "A-PRI":
+            raise RuntimeError("SEC 503")
+        return tables[f.accession_number]
+
+    services.edgar.list_13f_filings.side_effect = list_filings
+    services.edgar.get_information_table.side_effect = table
+    services.resolver.resolve.return_value = {"037833100": "AAPL"}
+
+    data = views.holders_view(services, "AAPL", managers=["1000001", "1000002"])
+    actions = {h["manager"]: h["action"] for h in data["holders"]}
+    assert actions == {"1000001": None, "1000002": "added"}

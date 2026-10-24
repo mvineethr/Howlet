@@ -259,6 +259,34 @@ def build_server(user_agent: str):
         `holdings` is [{"symbol": "AAPL", "shares": 10}, ...]."""
         return views.risk_view(svc, holdings, range_=range)
 
+    # Paper trading (fake money). There is deliberately no reset tool: an
+    # agent must never be able to wipe the user's practice account.
+    @server.tool()
+    def paper_account() -> dict:
+        """The user's PAPER (fake money) trading account: cash, positions at
+        live (delayed) prices, open orders, recent fills, and return vs simply
+        holding SPY. Open orders are settled against real price bars first.
+        Practice only - no real money moves."""
+        d = views.paper_account_view(svc)
+        if d.get("account"):
+            h = views.paper_history_view(svc)
+            d["vs_spy"] = {"account_return_pct": h["account_return_pct"], "spy_return_pct": h["spy_return_pct"]}
+        return d
+
+    @server.tool()
+    def paper_order(symbol: str, side: str, qty: float, type: str = "market",
+                    limit: Optional[float] = None, stop: Optional[float] = None, tif: str = "day") -> dict:
+        """Place a PAPER (fake money) order for a US stock or ETF. side: buy|sell.
+        type: market|limit|stop (limit needs `limit`, stop needs `stop`).
+        tif: day|gtc. Market orders fill now while the market is open,
+        otherwise at the next session's open. No shorting or margin."""
+        return views.paper_order_view(svc, symbol, side, qty, type=type, limit=limit, stop=stop, tif=tif)
+
+    @server.tool()
+    def paper_cancel(order_id: str) -> dict:
+        """Cancel an open PAPER order by its id (from paper_account)."""
+        return views.paper_cancel_view(svc, order_id)
+
     return server
 
 

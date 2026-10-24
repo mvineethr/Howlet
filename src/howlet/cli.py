@@ -20,15 +20,19 @@ from __future__ import annotations
 import csv
 import os
 import sys
+from types import SimpleNamespace
 
 import click
 from rich.console import Console
 from rich.table import Table
 
+from . import views
 from .cache import FilingCache, cached_information_table
 from .client import EdgarClient
 from .consensus import build_consensus_rows, fetch_latest_portfolios
 from .diff import STATUS_ORDER, diff_holdings
+from .market import YahooMarketClient
+from .paper import PaperError, PaperStore
 from .presets import FAMOUS_INVESTORS
 
 console = Console()
@@ -774,6 +778,89 @@ def dashboard(host: str, port: int):
         f"[blue underline]http://{host}:{port}[/blue underline]  (Ctrl+C to stop)"
     )
     run_dashboard(ua, host=host, port=port)
+
+
+def _paper_svc():
+    # Paper trading needs no SEC access, so no EDGAR_USER_AGENT either.
+    return SimpleNamespace(paper=PaperStore(), market=YahooMarketClient())
+
+
+@main.group(invoke_without_command=True)
+@click.pass_context
+def paper(ctx):
+    """Paper trading with fake money: show the account (subcommands place/cancel orders)."""
+    if ctx.invoked_subcommand is not None:
+        return
+    d = views.paper_account_view(_paper_svc())
+    if not d.get("account"):
+        console.print("No paper account yet - place an order (a $100,000 account starts automatically).")
+        return
+    console.print(
+        f"Account ${d['equity']:,.2f}  cash ${d['cash']:,.2f}  return {d['total_return_pct']:+.2f}%  "
+        f"market {'OPEN' if d['market_open'] else 'closed'}  (start ${d['account']['start_cash']:,.2f})"
+    )
+    table = Table(title="Positions")
+    for col in ("Symbol", "Qty", "Avg cost", "Price", "Value", "P/L"):
+        table.add_column(col)
+    for p in d["positions"]:
+        table.add_row(p["symbol"], f"{p['qty']:g}", f"{p['avg_cost']:,.2f}",
+                      "-" if p["price"] is None else f"{p['price']:,.2f}",
+                      "-" if p["value"] is None else f"{p['value']:,.2f}",
+                      "-" if p["unrealized"] is None else f"{p['unrealized']:+,.2f}")
+    console.print(table)
+    for o in d["open_orders"]:
+        level = o["limit"] or o["stop"]
+        console.print(f"open {o['id']}: {o['side']} {o['qty']:g} {o['symbol']} {o['type']}"
+                      + (f" @ {level:,.2f}" if level else "") + f" ({o['tif']})")
+    for o in d["activity"][:5]:
+        detail = f"@ {o['fill']['price']:,.2f}" if o.get("fill") else (o.get("reason") or "")
+        console.print(f"{o['status']} {o['id']}: {o['side']} {o['qty']:g} {o['symbol']} {detail}")
+
+
+def _paper_place(side: str, symbol: str, qty: float, limit, stop, gtc: bool) -> None:
+    if limit is not None and stop is not None:
+        raise click.UsageError("Use --limit or --stop, not both.")
+    otype = "limit" if limit is not None else "stop" if stop is not None else "market"
+    try:
+        o = views.paper_order_view(_paper_svc(), symbol, side, qty, type=otype, limit=limit, stop=stop,
+                                   tif="gtc" if gtc else "day")
+    except PaperError as exc:
+        raise click.ClickException(str(exc)) from None
+    fill = f" @ ${o['fill']['price']:,.2f}" if o["fill"] else ""
+    console.print(f"{o['status'].upper()}: {side} {o['qty']:g} {o['symbol']} {o['type']}{fill}  (id {o['id']})")
+
+
+@paper.command("buy")
+@click.argument("symbol")
+@click.argument("qty", type=float)
+@click.option("--limit", type=float, default=None, help="Limit price: fill only at this price or better")
+@click.option("--stop", type=float, default=None, help="Stop price: becomes a market order once crossed")
+@click.option("--gtc", is_flag=True, help="Good 'til cancelled (90 days) instead of today only")
+def paper_buy(symbol, qty, limit, stop, gtc):
+    """Paper-buy QTY shares of SYMBOL (fake money)."""
+    _paper_place("buy", symbol, qty, limit, stop, gtc)
+
+
+@paper.command("sell")
+@click.argument("symbol")
+@click.argument("qty", type=float)
+@click.option("--limit", type=float, default=None, help="Limit price: fill only at this price or better")
+@click.option("--stop", type=float, default=None, help="Stop price: becomes a market order once crossed")
+@click.option("--gtc", is_flag=True, help="Good 'til cancelled (90 days) instead of today only")
+def paper_sell(symbol, qty, limit, stop, gtc):
+    """Paper-sell QTY shares of SYMBOL (fake money)."""
+    _paper_place("sell", symbol, qty, limit, stop, gtc)
+
+
+@paper.command("cancel")
+@click.argument("order_id")
+def paper_cancel_cmd(order_id):
+    """Cancel an open paper order."""
+    try:
+        o = views.paper_cancel_view(_paper_svc(), order_id)
+    except (PaperError, LookupError) as exc:
+        raise click.ClickException(str(exc)) from None
+    console.print(f"Cancelled {o['id']}: {o['side']} {o['qty']:g} {o['symbol']}")
 
 
 if __name__ == "__main__":

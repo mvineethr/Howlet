@@ -695,3 +695,33 @@ def test_consensus_endpoint_passes_managers_param(api, services, monkeypatch):
     assert seen["m"] == ["buffett", "ackman"]
     api.get("/api/consensus")
     assert seen["m"] is None
+
+
+def test_holders_view_degrades_when_prior_filing_fails(services):
+    from howlet import views
+
+    def list_filings(cik, limit=1):
+        pre = "A" if cik.endswith("1000001") else "B"
+        return [
+            _filing(f"{pre}-CUR", date(2026, 3, 31)),
+            _filing(f"{pre}-PRI", date(2025, 12, 31)),
+        ][:limit]
+
+    tables = {
+        "A-CUR": [_holding("APPLE INC", "037833100", 1000, 10)],
+        "B-CUR": [_holding("APPLE INC", "037833100", 1000, 10)],
+        "B-PRI": [_holding("APPLE INC", "037833100", 500, 5)],
+    }
+
+    def table(f):
+        if f.accession_number == "A-PRI":
+            raise RuntimeError("SEC 503")
+        return tables[f.accession_number]
+
+    services.edgar.list_13f_filings.side_effect = list_filings
+    services.edgar.get_information_table.side_effect = table
+    services.resolver.resolve.return_value = {"037833100": "AAPL"}
+
+    data = views.holders_view(services, "AAPL", managers=["1000001", "1000002"])
+    actions = {h["manager"]: h["action"] for h in data["holders"]}
+    assert actions == {"1000001": None, "1000002": "added"}

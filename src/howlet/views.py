@@ -338,13 +338,16 @@ def consensus_view(
 
 def _prior_positions(svc: Services, cik: str) -> Optional[dict]:
     """Aggregated positions of a manager's previous 13F-HR (None if none)."""
-    with svc.edgar_lock:
-        filings = svc.edgar.list_13f_filings(cik, limit=2)
-        if len(filings) < 2:
-            return None
-        return _aggregate_by_cusip(
-            cached_information_table(svc.edgar, svc.cache, filings[1])
-        )
+    try:  # action is decoration: a failed lookup means "no prior", never a 502
+        with svc.edgar_lock:
+            filings = svc.edgar.list_13f_filings(cik, limit=2)
+            if len(filings) < 2:
+                return None
+            return _aggregate_by_cusip(
+                cached_information_table(svc.edgar, svc.cache, filings[1])
+            )
+    except Exception:
+        return None
 
 
 def _holder_action(prior: Optional[dict], cusip: str, shares: float) -> Optional[str]:

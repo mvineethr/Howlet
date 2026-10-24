@@ -32,6 +32,7 @@ DashboardServices = Services
 TAPE_SYMBOLS = views.TAPE_SYMBOLS
 
 _HTML_PATH = Path(__file__).parent / "dashboard.html"
+_APP_INDEX = Path(__file__).parent / "static" / "app" / "index.html"
 
 
 def create_app(
@@ -55,6 +56,12 @@ def create_app(
 
     @app.get("/")
     def index() -> Response:
+        # The React build; fall back to the classic page if it was never built.
+        path = _APP_INDEX if _APP_INDEX.exists() else _HTML_PATH
+        return Response(path.read_text(encoding="utf-8"), mimetype="text/html")
+
+    @app.get("/classic")
+    def classic() -> Response:
         return Response(_HTML_PATH.read_text(encoding="utf-8"), mimetype="text/html")
 
     @app.get("/api/managers")

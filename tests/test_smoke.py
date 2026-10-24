@@ -20,7 +20,7 @@ def _app():
 
 def test_index_serves_the_terminal_html():
     client = _app().test_client()
-    resp = client.get("/")
+    resp = client.get("/classic")
     assert resp.status_code == 200
     html = resp.get_data(as_text=True)
     # Critical UI anchors the JS boots against.

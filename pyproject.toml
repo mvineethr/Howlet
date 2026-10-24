@@ -40,4 +40,4 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 
 [tool.setuptools.package-data]
-howlet = ["dashboard.html", "static/*"]
+howlet = ["dashboard.html", "static/*", "static/app/*", "static/app/assets/*"]

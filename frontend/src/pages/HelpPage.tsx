@@ -5,7 +5,7 @@ import { safeHref } from "../lib/fmt";
 type Rows = [string, string][];
 
 const GLOSSARY_FUNCS: Rows = [
-  ["DES", "Description - the single-stock screen: quote, day and 52-week range, chart, financials, and who holds it. The Overview tab."],
+    ["DES", "Description - the stock page itself. Its Overview tab has the quote (with day and 52-week ranges), events (earnings, analyst view, shareholder meetings) and studies (indicator readings and opening-range breakout). The chart and financials are separate tabs, and the 🦉 chips above the tabs show which tracked managers hold it."],
   ["GP", "Graph Price - jumps to the Chart tab of the same stock page."],
   ["FA", "Financial Analysis - yearly revenue, profit, earnings per share, assets and cash flow, straight from the audited SEC annual report."],
   ["HDS", "Holders - which of the tracked investors own a stock, how many shares, and how big a bet it is for them."],
@@ -56,7 +56,7 @@ const COMMANDS: Rows = [
 ];
 const PAGES: Rows = [
   ["Home", "your customizable dashboard: a grid of blocks, with tabs and saved layouts."],
-  ["Markets", "world markets, crypto, FX, the Treasury yield curve and the Fed and policy feed."],
+  ["Markets", "stocks, crypto, FX, and Economy: Treasury curve, jobs & inflation, Fed calendar, SEC rulemaking."],
   ["Smart Money", "what the tracked investors hold and changed, consensus across them, position history and insider buys."],
   ["Screener", "filter a curated large-cap universe by valuation, size, growth and profitability."],
   ["News", "a market wire, Fed and policy, and an earnings feed."],
@@ -64,10 +64,10 @@ const PAGES: Rows = [
   ["Settings", "appearance, rail order and visibility, defaults, layouts, backup and this help page."],
 ];
 const STOCK_TABS: Rows = [
-  ["Overview", "quote, ranges and headline numbers."],
+  ["Overview", "quote with day and 52-week ranges, events (earnings, analysts, shareholder meetings), and studies (indicators and opening-range breakout)."],
   ["Chart", "price chart with indicators."],
-  ["Financials", "annual numbers from SEC filings, plus insider transactions and filings."],
-  ["Holders", "which tracked managers hold the stock."],
+  ["Financials", "annual financials from SEC filings, with CSV export."],
+  ["Holders", "tracked managers holding the stock (13F), plus insider transactions and SEC filings."],
   ["News", "headlines for the ticker."],
   ["Options", "calls and puts (experimental; can be switched off in Settings)."],
 ];

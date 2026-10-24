@@ -62,6 +62,12 @@ describe("snapshots", () => {
   it("applySnapshot active falls back to first tab", () => {
     expect(applySnapshot({ ...base(), active: "gone" }).active).toBe("home");
   });
+  it("loadSnapshots skips snapshots with empty or non-array tabs", () => {
+    localStorage.setItem(SNAPSHOTS_KEY, JSON.stringify({
+      ok: base(), empty: { tabs: [], active: "x" }, bad: { tabs: "no", active: "x" }, nul: null,
+    }));
+    expect(Object.keys(loadSnapshots())).toEqual(["ok"]);
+  });
   it("loadSnapshots tolerates junk", () => {
     localStorage.setItem(SNAPSHOTS_KEY, "[1]");
     expect(loadSnapshots()).toEqual({});

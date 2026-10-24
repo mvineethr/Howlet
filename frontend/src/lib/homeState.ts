@@ -30,9 +30,13 @@ export function resetHome(first: () => HomeState): HomeState {
   return h;
 }
 
+const validHome = (v: unknown): v is HomeState =>
+  !!v && typeof v === "object" && Array.isArray((v as HomeState).tabs) && (v as HomeState).tabs.length > 0;
+
 export function loadSnapshots(): Snapshots {
-  return readJson<Snapshots>(SNAPSHOTS_KEY, {}, (v): v is Snapshots =>
+  const all = readJson<Snapshots>(SNAPSHOTS_KEY, {}, (v): v is Snapshots =>
     !!v && typeof v === "object" && !Array.isArray(v));
+  return Object.fromEntries(Object.entries(all).filter(([, v]) => validHome(v)));
 }
 
 export function saveSnapshot(s: Snapshots, rawName: string, h: HomeState): Snapshots | Err {

@@ -24,10 +24,9 @@ export default function LayoutsMenu({ home, save }: { home: HomeState; save: (h:
   const doSave = () => {
     const key = name.trim().toLowerCase();
     const r = saveSnapshot(snaps, name, home);
-    const err = (r as { error?: unknown }).error;
-    if (typeof err === "string") { setError(err); return; }
+    if ("error" in r && typeof r.error === "string") { setError(r.error); return; }
     const write = () => { persist(r as Snapshots); setNaming(false); setPending(null); };
-    if (key in snaps) setPending({ text: `Overwrite layout "${key}"?`, run: write }); else write();
+    if (Object.prototype.hasOwnProperty.call(snaps, key)) setPending({ text: `Overwrite layout "${key}"?`, run: write }); else write();
   };
 
   return (
@@ -63,7 +62,7 @@ export default function LayoutsMenu({ home, save }: { home: HomeState; save: (h:
             <DialogContent>
               <Input autoFocus value={name} placeholder="Layout name" aria-label="Layout name"
                 onChange={(_, d) => { setName(d.value); setError(""); }} onKeyDown={(e) => { if (e.key === "Enter") doSave(); }} />
-              {error && <Text block size={200}>{error}</Text>}
+              {error && <Text block size={200} role="alert">{error}</Text>}
             </DialogContent>
             <DialogActions>
               <Button appearance="secondary" onClick={() => setNaming(false)}>Cancel</Button>

@@ -48,7 +48,7 @@ export function FilingsPanel({ symbol, title = "SEC filings", onRemove }: P) {
   const fil = useApi(`filings:${symbol}`, () => api.filings(symbol, 15), FIVE_MIN);
   return (
     <Block fixed={!onRemove} onRemove={onRemove} sec title={title} loading={fil.loading} error={fil.error} fetchedAt={fil.fetchedAt} refreshMs={FIVE_MIN}>
-      {fil.data && <DataTable columns={FILING_COLS} rows={fil.data.filings} rowKey={(r) => r.accession_number} empty="No recent SEC filings." />}
+      {fil.data && <DataTable columns={FILING_COLS} rows={fil.data.filings ?? []} rowKey={(r) => r.accession_number} empty="No recent SEC filings." />}
     </Block>
   );
 }

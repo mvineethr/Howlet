@@ -28,7 +28,7 @@ export default function HomeTabBar({ home, save }: { home: HomeState; save: (h: 
           <Tab key={t.id} value={t.id} onDoubleClick={() => start({ mode: "rename", id: t.id }, t.name)}>{t.name}</Tab>
         ))}
       </TabList>
-      <Button icon={<Edit16Regular />} appearance="subtle" aria-label="Rename tab" onClick={() => start({ mode: "rename", id: active.id }, active.name)} />
+      <Button icon={<Edit16Regular />} appearance="subtle" aria-label={`Rename tab ${active.name}`} onClick={() => start({ mode: "rename", id: active.id }, active.name)} />
       {active.id !== "home" && home.tabs.length > 1 && (confirmDel ? (
         <>
           <Text size={200}>Delete tab?</Text>
@@ -36,14 +36,14 @@ export default function HomeTabBar({ home, save }: { home: HomeState; save: (h: 
           <Button size="small" appearance="subtle" onClick={() => setConfirmDel(false)}>Cancel</Button>
         </>
       ) : (
-        <Button icon={<Delete16Regular />} appearance="subtle" aria-label="Delete tab" onClick={() => { setEdit(null); setConfirmDel(true); }} />
+        <Button icon={<Delete16Regular />} appearance="subtle" aria-label={`Delete tab ${active.name}`} onClick={() => { setEdit(null); setConfirmDel(true); }} />
       ))}
       {edit ? (
         <>
           <Input size="small" autoFocus value={text} placeholder="Tab name" aria-label="Tab name" onChange={(_, d) => { setText(d.value); setError(""); }}
             onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") setEdit(null); }} />
           <Button size="small" icon={<Checkmark16Regular />} aria-label="Confirm tab name" onClick={commit} />
-          {error && <Text size={200}>{error}</Text>}
+          {error && <Text size={200} role="alert">{error}</Text>}
         </>
       ) : (
         <Button icon={<Add16Regular />} appearance="subtle" onClick={() => start({ mode: "add" })}>Tab</Button>

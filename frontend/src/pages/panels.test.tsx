@@ -17,7 +17,7 @@ test("a panel with onRemove shows a remove button and calls it; without, none", 
 });
 
 test("panels accept a title that shows their subject", () => {
-  vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ filings: [] })));
   render(<FluentProvider theme={webDarkTheme}><FilingsPanel symbol="AAPL" title="SEC filings · AAPL" onRemove={() => {}} /></FluentProvider>);
   expect(screen.getByText("SEC filings · AAPL")).toBeTruthy();
 });

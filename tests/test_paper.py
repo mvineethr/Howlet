@@ -258,3 +258,97 @@ def test_reset_archives_the_old_account():
 def test_reset_rejects_non_finite_or_non_positive_cash(cash):
     with pytest.raises(PaperError):
         paper.reset(None, cash, SAT)
+
+
+# ---- summary & history ----
+
+def _filled(sym, side, qty, price, when):
+    return {"id": f"{sym}{side}{when.isoformat()}", "ts": paper._iso(when), "symbol": sym, "side": side, "qty": qty,
+            "type": "market", "limit": None, "stop": None, "tif": "day", "status": "filled",
+            "fill": {"ts": paper._iso(when), "price": price}, "reason": None, "ref_price": price, "closed_at": None}
+
+
+def test_summary_values_positions_and_flags_missing_prices():
+    state = account()
+    state["orders"] += [_filled("AAPL", "buy", 10, 100, at(22, 15)), _filled("MSFT", "buy", 5, 200, at(22, 16))]
+    state["orders"].append({**_filled("AAPL", "buy", 1, 90, at(23, 14)), "id": "o1", "status": "open", "fill": None})
+    prices = FakePrices({"AAPL": q("AAPL", 110, prev=105)})  # MSFT price missing
+    s = paper.summary(state, prices, FRI)
+    aapl, msft = s["positions"]
+    assert aapl == {"symbol": "AAPL", "qty": 10, "avg_cost": 100, "cost_basis": 1000, "price": 110,
+                    "value": 1100, "unrealized": 100, "unrealized_pct": 10}
+    assert msft["price"] is None and msft["value"] is None and s["prices_unavailable"] == ["MSFT"]
+    assert s["cash"] == 8_000 and s["equity"] == 8_000 + 1_100 + 1_000  # missing price counts at cost
+    assert s["day_change"] == 50 and s["total_return_pct"] == 1.0
+    assert [o["id"] for o in s["open_orders"]] == ["o1"] and len(s["activity"]) == 2
+    assert s["activity"][0]["symbol"] == "MSFT"  # newest first
+    assert s["market_open"] is False
+
+
+def test_history_tracks_account_and_spy():
+    state = paper.new_state(10_000, at(21, 14))
+    state["orders"].append(_filled("AAPL", "buy", 10, 100, at(22, 15)))
+    prices = FakePrices(closes={"SPY": {"2026-10-21": 500, "2026-10-22": 510, "2026-10-23": 520},
+                                "AAPL": {"2026-10-21": 95, "2026-10-22": 104, "2026-10-23": 110}})
+    h = paper.history(state, prices, FRI)
+    assert h["dates"] == ["2026-10-21", "2026-10-22", "2026-10-23"]
+    assert h["account"] == [10_000, 10_040, 10_100]
+    assert h["spy"] == [10_000, 10_200, 10_400]
+    assert h["account_return_pct"] == 1.0 and h["spy_return_pct"] == 4.0
+
+
+def test_history_without_spy_data_is_empty():
+    h = paper.history(account(), FakePrices(), FRI)
+    assert h == {"dates": [], "account": [], "spy": [], "account_return_pct": None, "spy_return_pct": None}
+
+
+# ---- storage ----
+
+def test_store_round_trip_and_missing_file(tmp_path):
+    store = paper.PaperStore(tmp_path)
+    assert store.load() is None
+    store.save(account())
+    assert store.load()["account"]["start_cash"] == 10_000
+    assert not (tmp_path / "paper.json.tmp").exists()
+
+
+def test_store_sets_corrupt_file_aside(tmp_path):
+    (tmp_path / "paper.json").write_text("{not json", encoding="utf-8")
+    store = paper.PaperStore(tmp_path)
+    assert store.load() is None
+    assert not (tmp_path / "paper.json").exists()
+    assert len(list(tmp_path.glob("paper.json.bad-*"))) == 1
+
+
+# ---- price adapter ----
+
+def test_market_prices_adapter_ranges_and_degradation():
+    from unittest.mock import MagicMock
+    market = MagicMock()
+    market.get_quote.return_value = Quote(symbol="AAPL", price=1.0, sparkline=[1, 2, 3],
+                                          history_ts=[int(at(22, 13, 30).timestamp()), int(at(23, 13, 30).timestamp()),
+                                                      int(at(24, 13, 30).timestamp())],
+                                          history_open=[1, 2, 3], history_high=[1, 2, 3], history_low=[1, 2, 3])
+    mp = paper.MarketPrices(market)
+    assert mp.quote("AAPL").price == 1.0
+    market.get_quote.assert_called_with("AAPL", range_="5d", interval="1d")
+    assert len(mp.bars("AAPL", at(22, 14), FRI)) == 3
+    market.get_quote.assert_called_with("AAPL", range_="60d", interval="5m")
+    old = at(22, 14) - timedelta(days=70)
+    mp.bars("AAPL", old, FRI)
+    market.get_quote.assert_called_with("AAPL", range_="6mo", interval="1d")
+    closes = mp.daily_closes("AAPL", at(23, 0).date(), FRI)
+    assert closes == {"2026-10-23": 2, "2026-10-24": 3}
+    market.get_quote.side_effect = RuntimeError("boom")
+    assert mp.quote("AAPL") is None and mp.bars("AAPL", FRI, FRI) is None and mp.market_open(FRI) is False
+
+
+def test_market_prices_daily_bars_skip_the_placement_day():
+    from unittest.mock import MagicMock
+    market = MagicMock()
+    ts = [int(at(d, 13, 30).timestamp()) for d in (22, 23)]
+    market.get_quote.return_value = Quote(symbol="X", price=1.0, sparkline=[1, 2], history_ts=ts,
+                                          history_open=[1, 2], history_high=[1, 2], history_low=[1, 2])
+    since = at(22, 15)  # mid-session on the 22nd, but older than the intraday window
+    bars = paper.MarketPrices(market).bars("X", since, since + timedelta(days=70))
+    assert [b.ts for b in bars] == [ts[1]]

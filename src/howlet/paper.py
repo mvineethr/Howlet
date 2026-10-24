@@ -10,12 +10,19 @@ no network I/O except through the `prices` object passed in.
 
 from __future__ import annotations
 
+import json
 import math
+import os
 import re
 import threading
+import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import NamedTuple, Optional
+
+from .market import Quote
+from .tickers import default_cache_dir
 
 DEFAULT_START_CASH = 100_000.0
 GTC_DAYS = 90
@@ -308,3 +315,147 @@ def settle(state: dict, prices, now: datetime) -> dict:
         else:
             o.update(status="filled", fill={"ts": _iso(when), "price": round(price, 4)})
     return state
+
+
+# ---- read models ----
+
+def _closed_at(o: dict) -> str:
+    return (o["fill"] or {}).get("ts") or o.get("closed_at") or o["ts"]
+
+
+def summary(state: dict, prices, now: datetime) -> dict:
+    cash, pos, realized = ledger(state)
+    rows, unavailable, value, day = [], [], 0.0, 0.0
+    for sym, (qty, cost) in sorted(pos.items()):
+        q = prices.quote(sym)
+        price = q.price if q else None
+        if price is None:
+            unavailable.append(sym)
+            mv = None
+        else:
+            mv = qty * price
+            if q.previous_close:
+                day += qty * (price - q.previous_close)
+        value += mv if mv is not None else cost  # missing price: count it at cost
+        rows.append({
+            "symbol": sym, "qty": round(qty, 4), "avg_cost": round(cost / qty, 4), "cost_basis": round(cost, 2),
+            "price": price, "value": round(mv, 2) if mv is not None else None,
+            "unrealized": round(mv - cost, 2) if mv is not None else None,
+            "unrealized_pct": round((mv - cost) / cost * 100, 2) if mv is not None and cost else None,
+        })
+    start = state["account"]["start_cash"]
+    equity = cash + value
+    orders = state["orders"]
+    return {
+        "account": state["account"],
+        "cash": round(cash, 2),
+        "positions": rows,
+        "positions_value": round(value, 2),
+        "equity": round(equity, 2),
+        "day_change": round(day, 2),
+        "total_return_pct": round((equity - start) / start * 100, 2),
+        "realized_pnl": round(realized, 2),
+        "open_orders": sorted((o for o in orders if o["status"] == "open"), key=lambda o: o["ts"], reverse=True),
+        "activity": sorted((o for o in orders if o["status"] != "open"), key=_closed_at, reverse=True)[:20],
+        "market_open": prices.market_open(now),
+        "prices_unavailable": unavailable,
+    }
+
+
+def history(state: dict, prices, now: datetime) -> dict:
+    """Daily account value vs the same start cash held in SPY since creation."""
+    empty = {"dates": [], "account": [], "spy": [], "account_return_pct": None, "spy_return_pct": None}
+    since = to_ny(_utc(state["account"]["created"])).date()
+    spy = prices.daily_closes("SPY", since, now)
+    if not spy:
+        return empty
+    dates = sorted(spy)
+    fills = [o for o in state["orders"] if o["status"] == "filled"]
+    closes = {s: prices.daily_closes(s, since, now) or {} for s in {o["symbol"] for o in fills}}
+    start = state["account"]["start_cash"]
+    last: dict[str, float] = {}
+    acct, spy_line = [], []
+    for d in dates:
+        for s, c in closes.items():
+            if d in c:
+                last[s] = c[d]
+        upto = [o for o in fills if to_ny(_utc(o["fill"]["ts"])).date().isoformat() <= d]
+        cash, pos, _ = ledger({"account": state["account"], "orders": upto})
+        acct.append(round(cash + sum(qty * last.get(s, cost / qty) for s, (qty, cost) in pos.items()), 2))
+        spy_line.append(round(start / spy[dates[0]] * spy[d], 2))
+    return {
+        "dates": dates, "account": acct, "spy": spy_line,
+        "account_return_pct": round((acct[-1] - start) / start * 100, 2),
+        "spy_return_pct": round((spy_line[-1] - start) / start * 100, 2),
+    }
+
+
+# ---- storage ----
+
+class PaperStore:
+    """paper.json under the Howlet cache dir. Atomic writes; a corrupt file is set aside, never overwritten."""
+
+    def __init__(self, cache_dir: Optional[Path] = None):
+        self.path = (Path(cache_dir) if cache_dir else default_cache_dir()) / "paper.json"
+
+    def load(self) -> Optional[dict]:
+        if not self.path.exists():
+            return None
+        try:
+            state = json.loads(self.path.read_text(encoding="utf-8"))
+            if not (isinstance(state, dict) and isinstance(state.get("account"), dict)
+                    and isinstance(state.get("orders"), list)):
+                raise ValueError("not a paper account file")
+            return state
+        except ValueError:
+            self.path.replace(self.path.with_name(f"paper.json.bad-{int(time.time())}"))
+            return None
+
+    def save(self, state: dict) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = self.path.with_name("paper.json.tmp")
+        tmp.write_text(json.dumps(state, indent=1), encoding="utf-8")
+        os.replace(tmp, self.path)
+
+
+# ---- prices ----
+
+class MarketPrices:
+    """Adapts YahooMarketClient to the engine. Never raises: market data is the fragile tier."""
+
+    def __init__(self, market):
+        self.market = market
+
+    def _get(self, symbol: str, range_: str, interval: str) -> Optional[Quote]:
+        try:
+            return self.market.get_quote(symbol, range_=range_, interval=interval)
+        except Exception:
+            return None
+
+    def quote(self, symbol: str) -> Optional[Quote]:
+        return self._get(symbol, "5d", "1d")
+
+    def market_open(self, now: datetime) -> bool:
+        q = self._get("SPY", "1d", "5m")
+        return is_market_open(now, q.history_ts[-1] if q and q.history_ts else None)
+
+    def bars(self, symbol: str, since: datetime, now: datetime) -> Optional[list[Bar]]:
+        intraday = now - since < timedelta(days=INTRADAY_LOOKBACK_DAYS)
+        q = self._get(symbol, "60d", "5m") if intraday else self._get(symbol, "6mo", "1d")
+        if q is None or not q.history_ts:
+            return None
+        out = [Bar(*b) for b in zip(q.history_ts, q.history_open, q.history_high, q.history_low)]
+        if not intraday:  # a daily bar covers the whole day, so start the day after placement
+            day = to_ny(since).date()
+            out = [b for b in out if ny_from_unix(b.ts).date() > day]
+        return out
+
+    def daily_closes(self, symbol: str, since: date, now: datetime) -> Optional[dict[str, float]]:
+        age = (to_ny(now).date() - since).days
+        range_ = next((r for r, lim in (("1mo", 28), ("3mo", 88), ("6mo", 180), ("1y", 360), ("2y", 720))
+                       if age <= lim), "5y")
+        q = self._get(symbol, range_, "1d")
+        if q is None or not q.history_ts:
+            return None
+        out = {ny_from_unix(t).date().isoformat(): c for t, c in zip(q.history_ts, q.sparkline)}
+        return {d: c for d, c in out.items() if d >= since.isoformat()}

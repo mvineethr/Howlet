@@ -1,8 +1,8 @@
 import { Caption1, Dropdown, Option, Tab, TabList } from "@fluentui/react-components";
 import { useRoute } from "../lib/route";
 import { readJson, writeJson } from "../lib/storage";
-import PlaceholderPage from "./PlaceholderPage";
 import WatchlistsTab from "./portfolio/WatchlistsTab";
+import HoldingsTab from "./portfolio/HoldingsTab";
 
 export type PortfolioTab = "watchlists" | "holdings";
 const TABS: [PortfolioTab, string][] = [["watchlists", "Watchlists"], ["holdings", "Holdings & risk"]];
@@ -25,7 +25,7 @@ export default function PortfolioPage({ params }: { params: string[] }) {
       <TabList selectedValue={tab} onTabSelect={(_, d) => pick(d.value as PortfolioTab)}>
         {TABS.map(([t, label]) => <Tab key={t} value={t}>{label}</Tab>)}
       </TabList>
-      {tab === "watchlists" ? <WatchlistsTab /> : <PlaceholderPage title="Holdings & risk" />}
+      {tab === "watchlists" ? <WatchlistsTab /> : <HoldingsTab />}
     </div>
   );
 }

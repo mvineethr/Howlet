@@ -26,7 +26,7 @@ export type DiffResult = { prior_period: string | null; current_period: string |
 export type Holder = { manager: string; period_of_report: string | null; issuer: string; shares: number; value_usd: number; weight_pct: number };
 export type HoldersResult = { symbol: string; tracked_managers: string[]; holders: Holder[] };
 export type ManagerRef = { label: string; cik: string };
-export type Security = Quote & { long_name?: string | null; exchange?: string | null };
+export type Security = Quote & { exchange?: string | null; instrument_type?: string | null };
 
 const q = encodeURIComponent;
 export const api = {

@@ -7,6 +7,7 @@ import Rail, { PAGE_META } from "./shell/Rail";
 import TopBar from "./shell/TopBar";
 import CommandBox from "./shell/CommandBox";
 import PlaceholderPage from "./pages/PlaceholderPage";
+import StockPage from "./pages/StockPage";
 import HomePage from "./pages/HomePage";
 
 const prefersDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -40,7 +41,7 @@ export default function App() {
   }, [settings, go]);
 
   const page = route.kind === "stock"
-    ? <PlaceholderPage title={route.symbol} />
+    ? <StockPage symbol={route.symbol} tab={route.tab} />
     : route.page === "home" ? <HomePage /> : <PlaceholderPage title={PAGE_META[route.page].label} />;
 
   return (

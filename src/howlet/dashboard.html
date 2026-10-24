@@ -2625,6 +2625,7 @@ async function boot() {
   renderAlertsBadge(); // fired price alerts persist across reloads
   pollPriceAlerts();
   setInterval(pollPriceAlerts, 60_000);
+  const qcmd = new URLSearchParams(location.search).get("cmd"); if (qcmd) runCommand(qcmd);
   // PORT screen data (consensus/news panels) loads lazily on first visit.
 }
 

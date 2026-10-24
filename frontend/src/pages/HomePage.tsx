@@ -50,7 +50,7 @@ export default function HomePage() {
       <AddBlockDialog open={adding} onClose={() => setAdding(false)} onAdd={(t, c) => { addBlock(t, c); setAdding(false); }} />
       <div ref={boxRef}>
         {width > 0 && (
-          <Responsive width={width} className="layout" rowHeight={28} margin={[10, 10]} draggableHandle=".drag-handle"
+          <Responsive width={width} className="layout" rowHeight={28} margin={[10, 10]} draggableHandle=".drag-handle" draggableCancel="button"
             breakpoints={{ lg: 0 }} cols={{ lg: 12 }}
             layouts={{ lg: tab.blocks.map(({ i, x, y, w, h }) => ({ i, x, y, w, h, minW: 3, minH: 4 })) }}
             onLayoutChange={onLayout}>

@@ -52,3 +52,15 @@ Plan 2 ports the remaining pages and deletes `/classic`.
 - `npm audit` warnings are not triaged (dev toolchain only).
 - Bundle: 765 kB raw, 220 kB gzipped. Vite warns that the chunk is over
   500 kB. Code-split per page when plan 2 adds pages.
+
+## Added by plan 2a (2026-10-24)
+Resolved in 2a: Home grid width flash (ResizeObserver-measured grid), dark-mode white flash (CSS vars before render),
+empty-watchlist request.
+Still open:
+- DataTable: clickable rows aren't keyboard-reachable; `tableCsv` silently blanks columns without a `csv` accessor.
+- Page heights hard-code chrome height (`calc(100vh - N)`); `App.tsx` page switch is a 5-deep ternary — use a map in 2b.
+- Crypto: "top 0" title when empty; table overflows narrow widths. StocksTab renders empty tables for empty sections.
+- FxTab: `{matrix: {}}` would render an empty table (fx.py degrades the whole response today, so not hit); no FxTab test.
+- No HomePage unit test (jsdom `clientWidth` is 0 and gates the grid).
+- `useApi` starts a new request each interval even if the previous one is still in flight.
+- **Backend:** `/api/macro` returns `treasury_yield_curve: {}` live (2026-10-24) — yield curve unavailable in both UIs.

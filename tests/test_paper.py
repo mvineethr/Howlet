@@ -56,6 +56,8 @@ def test_to_ny_handles_dst():
     assert paper.to_ny(datetime(2026, 12, 1, 16, 0, tzinfo=UTC)).hour == 11  # EST
     assert paper.to_ny(datetime(2026, 3, 8, 6, 59, tzinfo=UTC)).hour == 1    # just before spring-forward
     assert paper.to_ny(datetime(2026, 3, 8, 7, 0, tzinfo=UTC)).hour == 3
+    assert paper.to_ny(datetime(2026, 11, 1, 5, 59, tzinfo=UTC)).hour == 1    # still EDT (01:59)
+    assert paper.to_ny(datetime(2026, 11, 1, 6, 0, tzinfo=UTC)).hour == 1     # EST: clocks fell back
 
 
 def test_market_open_needs_session_hours_and_a_fresh_bar():
@@ -119,6 +121,12 @@ def test_fractional_qty_rounds_to_four_decimals():
     assert order["qty"] == 0.1235
 
 
+def test_nasdaq_fallback_stocks_type_is_accepted():
+    prices = FakePrices({"AAPL": q("AAPL", 200.0, "STOCKS")}, open_=True)
+    _, order = paper.place_order(account(), prices, FRI, "AAPL", "buy", 1)
+    assert order["status"] == "filled"
+
+
 @pytest.mark.parametrize("kwargs,quote,msg", [
     ({"symbol": "^GSPC"}, q("^GSPC", 7000, "INDEX"), "isn't a US stock or ETF symbol"),
     ({"symbol": "BTC-USD"}, q("BTC-USD", 80000, "CRYPTOCURRENCY"), "US stocks and ETFs only"),
@@ -168,6 +176,17 @@ def test_rejected_at_fill_time_when_cash_ran_out():
     assert stop_buy["status"] == "rejected" and "Not enough cash" in stop_buy["reason"]
     assert stop_buy["closed_at"] == paper._iso(at(23, 14, 5))
     assert paper.ledger(state)[0] == pytest.approx(9_600.0)
+
+
+def test_rejected_at_fill_time_when_shares_are_gone():
+    prices = FakePrices({"AAPL": q("AAPL", 100.0)}, open_=True)
+    state, _ = paper.place_order(account(), prices, FRI, "AAPL", "buy", 10)
+    prices.open = False
+    state, sell = paper.place_order(state, prices, FRI, "AAPL", "sell", 10, "stop", stop=90)
+    state["orders"] = [o for o in state["orders"] if o["side"] == "sell"]  # the position vanishes
+    prices._bars["AAPL"] = [bar(at(23, 14, 5), 85, 86, 84)]
+    paper.settle(state, prices, at(23, 15))
+    assert sell["status"] == "rejected" and "Not enough shares" in sell["reason"]
 
 
 def test_day_order_expires_at_the_close():

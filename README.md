@@ -209,6 +209,7 @@ manager portfolio and changes, consensus, financials, fund holdings).
 | `NEWS` / `N` / `TOP` | News |
 | `EQS` | Screener |
 | `PF` / `MY` / `WATCH` | Portfolio |
+| `PAPER` | Portfolio, Paper tab |
 | `SETTINGS` | Settings |
 | `HELP` / `?` / `ABOUT` / `FAQ` | Help |
 | `ALERT AAPL > 350` | add a price alert |

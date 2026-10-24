@@ -812,6 +812,9 @@ def paper(ctx):
         level = o["limit"] or o["stop"]
         console.print(f"open {o['id']}: {o['side']} {o['qty']:g} {o['symbol']} {o['type']}"
                       + (f" @ {level:,.2f}" if level else "") + f" ({o['tif']})")
+    for o in d["activity"][:5]:
+        detail = f"@ {o['fill']['price']:,.2f}" if o.get("fill") else (o.get("reason") or "")
+        console.print(f"{o['status']} {o['id']}: {o['side']} {o['qty']:g} {o['symbol']} {detail}")
 
 
 def _paper_place(side: str, symbol: str, qty: float, limit, stop, gtc: bool) -> None:

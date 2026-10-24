@@ -95,3 +95,13 @@ def test_cli_buy_and_show(svc, monkeypatch):
     assert r.exit_code == 0 and "100,000.00" in r.output
     r = runner.invoke(cli.main, ["paper", "buy", "BTC-USD", "1"])
     assert r.exit_code != 0 and "US stocks and ETFs only" in r.output
+
+
+def test_read_views_do_not_rewrite_an_unchanged_account(svc, monkeypatch):
+    from howlet import views
+    views.paper_order_view(svc, "AAPL", "buy", 1, type="limit", limit=150, tif="gtc")
+    saves = []
+    monkeypatch.setattr(svc.paper, "save", lambda state: saves.append(1))
+    views.paper_account_view(svc)
+    views.paper_history_view(svc)
+    assert saves == []

@@ -12,10 +12,10 @@ export default function CompareChart({ dates, a, b, aLabel, bLabel }: Props) {
     <div>
       <svg role="img" aria-label={`${aLabel} vs ${bLabel}`} viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="none">
         <polyline points={pts(b)} fill="none" stroke="var(--cyan)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
-        <polyline points={pts(a)} fill="none" stroke="var(--amber)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+        <polyline points={pts(a)} fill="none" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
       </svg>
       <div style={{ display: "flex", gap: 16, fontSize: "0.85em", color: "var(--dim)" }}>
-        <span><span style={{ color: "var(--amber)" }}>━</span> {aLabel}</span>
+        <span><span style={{ color: "var(--accent)" }}>━</span> {aLabel}</span>
         <span><span style={{ color: "var(--cyan)" }}>━</span> {bLabel}</span>
         <span style={{ marginLeft: "auto" }}>{dates[0]} → {dates[dates.length - 1]}</span>
       </div>

@@ -30,10 +30,11 @@ GTC_DAYS = 90
 INTRADAY_LOOKBACK_DAYS = 59
 MARKET_BAR_MAX_AGE = timedelta(minutes=30)
 MIN_QTY = 0.0001
-TRADABLE_TYPES = {"EQUITY", "ETF"}
+TRADABLE_TYPES = {"EQUITY", "ETF", "STOCKS"}  # STOCKS: Nasdaq fallback assetClass
 _SYMBOL_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
 _EPS = 1e-9
 
+# shortcut: per-process only; cross-process writes are rare (fills only) - upgrade to a file lock if it ever matters.
 LOCK = threading.Lock()  # one read-settle-write at a time (Flask is threaded)
 
 
@@ -206,7 +207,7 @@ def place_order(state: Optional[dict], prices, now: datetime, symbol: str, side:
     q = prices.quote(sym)
     if q is None:
         raise PaperError(f"No price for {sym} right now - try again in a minute.")
-    # instrument_type is None on the Nasdaq fallback; the symbol pattern already
+    # The Nasdaq fallback reports assetClass "STOCKS"; the symbol pattern already
     # excluded indexes (^), FX (=X) and futures (=F) there.
     if q.currency and q.currency != "USD":
         raise PaperError(f"{sym} trades in {q.currency}; paper trading covers US stocks and ETFs only.")
@@ -233,7 +234,7 @@ def place_order(state: Optional[dict], prices, now: datetime, symbol: str, side:
     }
     if type == "market" and prices.market_open(now):
         order["status"] = "filled"
-        order["fill"] = {"ts": _iso(now), "price": q.price}
+        order["fill"] = {"ts": _iso(now), "price": round(q.price, 4)}
     state["orders"].append(order)
     return state, order
 
@@ -413,7 +414,7 @@ class PaperStore:
 
     def save(self, state: dict) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_name("paper.json.tmp")
+        tmp = self.path.with_name(f"paper.json.{os.getpid()}.tmp")
         tmp.write_text(json.dumps(state, indent=1), encoding="utf-8")
         os.replace(tmp, self.path)
 

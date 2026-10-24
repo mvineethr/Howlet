@@ -10,6 +10,7 @@ map that to a 404 / tool error without parsing messages.
 
 from __future__ import annotations
 
+import json
 import os
 import threading
 from datetime import datetime, timezone
@@ -1192,8 +1193,10 @@ def paper_account_view(svc, now: Optional[datetime] = None) -> dict:
         state = svc.paper.load()
         if state is None:
             return {"account": None, "market_open": prices.market_open(now)}
+        before = json.dumps(state, sort_keys=True)
         paper.settle(state, prices, now)
-        svc.paper.save(state)
+        if json.dumps(state, sort_keys=True) != before:  # don't clobber another process's write
+            svc.paper.save(state)
         return paper.summary(state, prices, now)
 
 
@@ -1229,8 +1232,10 @@ def paper_history_view(svc, now: Optional[datetime] = None) -> dict:
         state = svc.paper.load()
         if state is None:
             return {"dates": [], "account": [], "spy": [], "account_return_pct": None, "spy_return_pct": None}
+        before = json.dumps(state, sort_keys=True)
         paper.settle(state, prices, now)
-        svc.paper.save(state)
+        if json.dumps(state, sort_keys=True) != before:
+            svc.paper.save(state)
         return paper.history(state, prices, now)
 
 

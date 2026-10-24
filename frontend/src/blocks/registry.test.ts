@@ -13,5 +13,15 @@ test("first run has the 4 calm blocks, no overlaps", () => {
 
 test("every first-run type is registered; unknown types fall back", () => {
   for (const b of firstRunHome().tabs[0].blocks) expect(BLOCKS[b.type]).toBeDefined();
-  expect(blockFor("fx-matrix").label).toBe("fx-matrix");
+  expect(blockFor("nope").label).toBe("nope");
+});
+
+test("every classic widget type is registered with its needs", () => {
+  const classic = ["manager-portfolio", "manager-changes", "consensus", "watchlist", "watchlist-news", "watchlist-events",
+    "insiders", "insider-buys", "position-history", "market-news", "fed", "yield-curve", "world-markets", "crypto",
+    "filings", "fx-matrix", "fund"];
+  for (const t of classic) expect(BLOCKS[t], t).toBeDefined();
+  expect(BLOCKS["position-history"].needs).toBe("manager-symbol");
+  expect(BLOCKS.fund.needs).toBe("symbol");
+  expect(BLOCKS.pulse.needs).toBeNull();
 });

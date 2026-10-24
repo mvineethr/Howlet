@@ -1,4 +1,5 @@
-import { Button, Menu, MenuItem, MenuList, MenuPopover, MenuTrigger, Tab, TabList } from "@fluentui/react-components";
+import { Button, Tab, TabList } from "@fluentui/react-components";
+import AddBlockDialog from "../blocks/AddBlockDialog";
 import { Add16Regular } from "@fluentui/react-icons";
 import { useLayoutEffect, useRef, useState } from "react";
 import { Responsive, type Layout } from "react-grid-layout";
@@ -28,10 +29,10 @@ export default function HomePage() {
       ...t, blocks: t.blocks.map((b) => { const l = pos.get(b.i); return l ? { ...b, x: l.x, y: l.y, w: l.w, h: l.h } : b; }),
     }) });
   };
-  const addBlock = (type: string) => {
+  const [adding, setAdding] = useState(false);
+  const addBlock = (type: string, config: Record<string, string>) => {
     const { w, h } = BLOCKS[type].defaultSize;
-    const cfg: Record<string, string> = type === "watchlist" ? { list: "default" } : type === "manager-changes" ? { manager: "buffett" } : {};
-    const block = { i: `${type}-${Date.now().toString(36)}`, type, config: cfg, x: 0, y: Infinity, w, h };
+    const block = { i: `${type}-${Date.now().toString(36)}`, type, config, x: 0, y: Infinity, w, h };
     save({ ...home, tabs: home.tabs.map((t) => t.id === tab.id ? { ...t, blocks: [...t.blocks, block] } : t) });
   };
   const removeBlock = (i: string) =>
@@ -43,13 +44,9 @@ export default function HomePage() {
         <TabList selectedValue={tab.id} onTabSelect={(_, d) => save({ ...home, active: String(d.value) })}>
           {home.tabs.map((t) => <Tab key={t.id} value={t.id}>{t.name}</Tab>)}
         </TabList>
-        <Menu>
-          <MenuTrigger disableButtonEnhancement><Button icon={<Add16Regular />} appearance="subtle">Add block</Button></MenuTrigger>
-          <MenuPopover><MenuList>
-            {Object.entries(BLOCKS).map(([type, e]) => <MenuItem key={type} onClick={() => addBlock(type)}>{e.label}</MenuItem>)}
-          </MenuList></MenuPopover>
-        </Menu>
+        <Button icon={<Add16Regular />} appearance="subtle" onClick={() => setAdding(true)}>Add block</Button>
       </div>
+      <AddBlockDialog open={adding} onClose={() => setAdding(false)} onAdd={(t, c) => { addBlock(t, c); setAdding(false); }} />
       <div ref={boxRef}>
         {width > 0 && (
           <Responsive width={width} className="layout" rowHeight={28} margin={[10, 10]} draggableHandle=".drag-handle"

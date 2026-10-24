@@ -17,10 +17,9 @@ gets filtered through it BEFORE technical merit is even considered.
    pushes users toward a subscription? A free-to-embed widget with paid
    limits is a paywalled component. Reject it.
 3. **Runtime independence**: no CDN at runtime for anything load-bearing.
-   Vendor the asset into the package (KLineChart lives at
-   `static/klinecharts.min.js` with its LICENSE file beside it, served by
-   Flask's own `/static/`). An open-source tool that breaks offline or when
-   a third-party CDN changes paths isn't done.
+   Bundle the asset into the package (KLineChart is installed from npm,
+   pinned 9.8.12, and bundled into `static/app`; no CDN at runtime). An
+   open-source tool that breaks offline or when a third-party CDN changes paths isn't done.
 4. **Verify the license file ships**: vendored code carries its LICENSE
    into the repo, next to the asset.
 5. When a candidate fails the gate, record WHAT it was and WHY it failed in

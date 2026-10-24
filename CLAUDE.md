@@ -182,7 +182,7 @@ poll), EDGAR full-text search, company filings feed, N-PORT fund
 holdings (ARKK verified; UITs like SPY correctly error), FX cross-rate
 matrix, crypto top-20, `howlet warm`, CSV exports (screener, manager
 portfolio/changes, consensus, financials, fund holdings), and an export/import
-state backup (Settings -> Layouts & backup, `howlet-backup-<date>.json`). **MCP: 27 tools.** Presets: **14 managers** (Buffett, Burry,
+state backup (Settings -> Layouts & backup, `howlet-backup-<date>.json`). Settings -> Tracked managers picks which presets and custom CIKs drive alerts, and the owl chip shows each holder's last-quarter action (new/added/trimmed/held). **MCP: 27 tools.** Presets: **14 managers** (Buffett, Burry,
 Ackman, Icahn, Tepper, Klarman, Loeb, Dalio, Druckenmiller, Marks,
 Li Lu, Einhorn/DME, Fundsmith, Tiger Global), every CIK verified live
 against a current 13F-HR. CI (ruff + pytest, 6 legs) and Docker.

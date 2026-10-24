@@ -544,6 +544,14 @@ def test_filing_alerts_lists_latest_accessions_and_skips_failures(api, services)
     assert all(r["cik"] != broken_cik for r in data)
 
 
+def test_filing_alerts_dedupes_same_cik_in_different_spellings(api, services):
+    services.edgar.list_13f_filings.side_effect = lambda cik, limit=1: [
+        _filing(f"acc-{cik}", date(2026, 3, 31))
+    ]
+    data = api.get("/api/filing-alerts?managers=buffett,0001067983").get_json()
+    assert len(data) == 1
+
+
 def test_insider_buys_endpoint_screens_for_p_codes(api, services):
     from test_form4 import FILING, SAMPLE_FORM4_XML
 

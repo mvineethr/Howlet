@@ -3,7 +3,11 @@ import { FluentProvider, webDarkTheme } from "@fluentui/react-components";
 import SettingsPage from "./SettingsPage";
 import { useSettings, DEFAULT_SETTINGS } from "../lib/settings";
 
-beforeEach(() => { localStorage.clear(); useSettings.setState({ settings: DEFAULT_SETTINGS }); });
+beforeEach(() => {
+  localStorage.clear(); useSettings.setState({ settings: DEFAULT_SETTINGS });
+  vi.spyOn(globalThis, "fetch").mockReturnValue(new Promise(() => {})); // TrackedManagers loads presets; never settle
+});
+afterEach(() => vi.restoreAllMocks());
 const ui = () => render(<FluentProvider theme={webDarkTheme}><SettingsPage /></FluentProvider>);
 
 test("theme mode radio updates the store", () => {

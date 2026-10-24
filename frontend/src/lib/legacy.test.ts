@@ -47,3 +47,10 @@ test("migrateLayout skips junk widget entries", () => {
   const home = migrateLayout({ tabs: [{ id: "t", widgets: [null, 5, { id: "a", type: "watchlist" }] }] })!;
   expect(home.tabs[0].blocks.map((b) => b.i)).toEqual(["a"]);
 });
+
+test("watchlists: entries that are not string arrays are dropped; none left -> defaults", () => {
+  localStorage.setItem("howlet_watchlists_v1", JSON.stringify({ bad: "AAPL", ok: ["IBM"], mixed: ["A", 1] }));
+  expect(getWatchlists()).toEqual({ ok: ["IBM"] });
+  localStorage.setItem("howlet_watchlists_v1", JSON.stringify({ default: "AAPL" }));
+  expect(getWatchlists().default).toContain("MSFT");
+});

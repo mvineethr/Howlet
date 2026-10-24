@@ -113,10 +113,10 @@ const BUY_COLS: Column<InsiderBuy>[] = [
 export function InsiderBuysPanel({ list, title = "Open-market insider buys", onRemove }: P & { list: string[]; title?: string }) {
   const symbols = list;
   const { data, loading, error, fetchedAt } = useApi(symbols.length ? `ibuys:${symbols.join(",")}` : null, () => api.insiderBuys(symbols, 8));
-  if (!symbols.length) return <span style={{ color: "var(--dim)" }}>Add stock symbols to this watchlist (Portfolio → Watchlists) to screen them.</span>;
   return (
     <Block fixed={!onRemove} onRemove={onRemove} sec title={title} loading={loading} error={error} fetchedAt={fetchedAt}>
-      {!data && !error && <span style={{ color: "var(--dim)" }}>{`Scanning Form 4s for ${symbols.length} symbols (first run is the slow one)…`}</span>}
+      {!symbols.length && <span style={{ color: "var(--dim)" }}>Add stock symbols to this watchlist (Portfolio → Watchlists) to screen them.</span>}
+      {symbols.length > 0 && !data && !error && <span style={{ color: "var(--dim)" }}>{`Scanning Form 4s for ${symbols.length} symbols (first run is the slow one)…`}</span>}
       {data && (
         <>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, color: "var(--up)" }}>

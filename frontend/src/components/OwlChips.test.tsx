@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import OwlChips from "./OwlChips";
 import { clearHoldersMemo } from "../lib/api";
 
@@ -19,7 +19,7 @@ test("one chip per holder, heaviest first", async () => {
 test("renders nothing when the call fails (decoration only)", async () => {
   reply({ error: "boom" }, 502);
   const { container } = render(<OwlChips symbol="AAPL" />);
-  await new Promise((r) => setTimeout(r, 20));
+  await act(() => new Promise((r) => setTimeout(r, 20)));
   expect(container.textContent).toBe("");
 });
 

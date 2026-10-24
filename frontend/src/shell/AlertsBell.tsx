@@ -99,7 +99,10 @@ export default function AlertsBell() {
         <Text block weight="semibold" style={{ marginTop: 10 }}>New 13F filings</Text>
         {newFilings.length === 0
           ? <Text block size={200} style={{ color: "var(--dim)" }}>None since you last looked. Checked every 30 minutes.</Text>
-          : newFilings.map((f) => <Text block key={f.accession_number}>{f.label.toUpperCase()} · filed {f.filing_date}</Text>)}
+          : newFilings.map((f) => (
+            <Text block key={f.accession_number}>
+              <Link onClick={() => go({ kind: "page", page: "smart", params: ["managers", f.label] })}>{f.label.toUpperCase()}</Link> · filed {f.filing_date}
+            </Text>))}
         {count > 0 && <Button size="small" style={{ marginTop: 10 }} onClick={markSeen}>Mark all seen</Button>}
       </PopoverSurface>
     </Popover>

@@ -6,7 +6,9 @@ const DEFAULT_WATCHLIST = ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA", "^GSPC", "BTC
 export function getWatchlists(): Record<string, string[]> {
   const named = readJson<Record<string, string[]> | null>("howlet_watchlists_v1", null,
     (v): v is Record<string, string[]> => isObj(v));
-  if (named && Object.keys(named).length) return named;
+  const valid = Object.fromEntries(Object.entries(named ?? {}).filter(
+    ([, v]) => Array.isArray(v) && v.every((x) => typeof x === "string")));
+  if (Object.keys(valid).length) return valid;
   const legacy = readJson<string[]>("howlet_watchlist", [], (v): v is string[] => Array.isArray(v));
   return { default: legacy.length ? legacy : DEFAULT_WATCHLIST };
 }

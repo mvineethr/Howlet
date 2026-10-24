@@ -10,7 +10,7 @@ export type Command =
 const PAGES: Record<string, PageId> = {
   HOME: "home", DASH: "home", MKTS: "markets", WEI: "markets", FXC: "markets", ECO: "markets",
   NEWS: "news", N: "news", TOP: "news", EQS: "screener", PF: "portfolio", MY: "portfolio",
-  WATCH: "portfolio", SETTINGS: "settings",
+  WATCH: "portfolio", W: "portfolio", SETTINGS: "settings",
 };
 const FUNCS: Record<string, StockTab> = { DES: "overview", GP: "chart", GIP: "chart", FA: "financials", HDS: "holders", OPT: "options", OMON: "options", CN: "news" };
 

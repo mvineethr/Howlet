@@ -702,9 +702,10 @@ def latest_filings_view(
     rows = []
     seen_ciks: set[str] = set()
     for label, cik in resolve_managers(managers).items():
-        if cik in seen_ciks:
+        padded = EdgarClient.pad_cik(cik)
+        if padded in seen_ciks:
             continue
-        seen_ciks.add(cik)
+        seen_ciks.add(padded)
         try:
             with svc.edgar_lock:
                 filings = svc.edgar.list_13f_filings(cik, limit=1)

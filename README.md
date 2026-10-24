@@ -168,7 +168,9 @@ Home under a name, loads or deletes saved layouts, and restores the
 default. Everything persists in your browser; **Settings -> Layouts &
 backup** exports and imports it all as a `howlet-backup-<date>.json`
 file. A topbar bell alerts you to new 13F filings from your tracked
-managers. Click any symbol to open its stock page.
+managers (choose them, presets plus custom CIKs, in Settings -> Tracked
+managers), and the owl chip on a stock shows each holder's last-quarter
+action (new/added/trimmed/held). Click any symbol to open its stock page.
 
 **Pages**
 

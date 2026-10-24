@@ -13,6 +13,7 @@ test.each([
   ["MKTS", { kind: "go", route: { kind: "page", page: "markets" } }],
   ["ECO", { kind: "go", route: { kind: "page", page: "markets" } }],
   ["EQS", { kind: "go", route: { kind: "page", page: "screener" } }],
+  ["W", { kind: "go", route: { kind: "page", page: "portfolio" } }],
   ["PF", { kind: "go", route: { kind: "page", page: "portfolio" } }],
   ["home", { kind: "go", route: { kind: "page", page: "home" } }],
   ["buffett", { kind: "manager", id: "buffett" }],

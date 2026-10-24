@@ -47,7 +47,7 @@ export default function LayoutsMenu({ home, save }: { home: HomeState; save: (h:
             <Menu>
               <MenuTrigger disableButtonEnhancement><MenuItem disabled={!names.length}>Delete</MenuItem></MenuTrigger>
               <MenuPopover><MenuList>
-                {names.map((n) => <MenuItem key={n} onClick={() => persist(deleteSnapshot(snaps, n))}>{n}</MenuItem>)}
+                {names.map((n) => <MenuItem key={n} onClick={() => setPending({ text: `Delete saved layout "${n}"?`, run: () => persist(deleteSnapshot(snaps, n)) })}>{n}</MenuItem>)}
               </MenuList></MenuPopover>
             </Menu>
             <MenuDivider />

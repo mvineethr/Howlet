@@ -1,7 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import OwlChips from "./OwlChips";
+import { clearHoldersMemo } from "../lib/api";
 
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); clearHoldersMemo(); });
 const reply = (body: unknown, status = 200) =>
   vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify(body), { status }));
 

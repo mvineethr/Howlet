@@ -23,7 +23,7 @@ Changelog = "https://github.com/mvineethr/Howlet/blob/main/CHANGELOG.md"
 dev = [
     "pytest>=8.0",
     "responses>=0.25",
-    "ruff>=0.4,<0.17",  # 0.17 widened the default rule set (224 findings in existing code); adopt it deliberately
+    "ruff>=0.4",
 ]
 mcp = [
     "mcp>=1.2",
@@ -41,3 +41,8 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 howlet = ["static/*", "static/app/*", "static/app/assets/*"]
+
+[tool.ruff.lint]
+# ruff's long-standing defaults, pinned: ruff 0.16 widened the default rule set
+# (UP/B/S/SIM/...: 224 findings in existing code). Adopt new rules deliberately.
+select = ["E4", "E7", "E9", "F"]

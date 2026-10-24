@@ -331,6 +331,26 @@ pytest tests/ -v
 Tests run fully offline against mocked HTTP responses — they don't hit the
 real SEC servers.
 
+## Frontend development
+
+The UI at `/` is a React + Fluent UI app in `frontend/`. The built files are
+committed under `src/howlet/static/app/`, so Node is not needed to run Howlet.
+
+```bash
+cd frontend && npm install && npm run dev
+```
+
+```bash
+npm test
+```
+
+```bash
+npm run build
+```
+
+The dev server (port 5173) has its own localStorage; your real data lives at
+`http://localhost:8813/`.
+
 ## License
 
 MIT. See `LICENSE`.

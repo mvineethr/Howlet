@@ -43,6 +43,7 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 | `views.py` | Shared JSON view layer - Flask endpoints AND MCP tools both wrap these |
 | `dashboard.py` | Flask wiring only; UI lives in `dashboard.html` (single file, vanilla JS) |
 | `mcp_server.py` | FastMCP stdio server, 27 tools (optional dep: `pip install "howlet[mcp]"`) |
+| `frontend/` | React + Fluent UI v9 app (Vite), builds into `static/app/`; served at `/`. Old UI at `/classic` until plan 2 completes |
 
 ## Hard rules
 
@@ -173,6 +174,7 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 - **`:focus-visible` does not match a scripted `.focus()`** (Chrome wants
   real keyboard interaction). Verify focus styles with an actual Tab
   keypress or you will "find" a bug in correct CSS.
+- **Vite dev server (5173) is a different origin -> separate localStorage.** Your real watchlists/alerts only appear at `:8813`; always verify there.
 
 ## Caches (all under `~/.howlet/`)
 
@@ -214,6 +216,8 @@ treatment, first-ever `:focus-visible` styles, a motion layer with a
 `prefers-reduced-motion` block, and the fake blinking "live" dot removed
 (it asserted liveness it could not know). Chart theme now reads `:root`.
 168/102 line diff, tests still green, verified live in the browser.
+
+React shell live at `/` (2026-10-23): rail, Ctrl+K, settings, Home grid, stock overview + owl chips, alerts bell; other pages still in `/classic`.
 
 Known-untested: FRED with a real key; pre-2013 SGML filings (should
 error clearly, never exercised).

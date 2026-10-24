@@ -21,6 +21,7 @@ export type Settings = {
   refresh: "fast" | "normal" | "slow";
   alertSound: boolean;
   showOptions: boolean;
+  trackedManagers: string[]; // preset labels or CIKs; empty = all presets
 };
 
 export const SETTINGS_KEY = "howlet_settings_v1";
@@ -40,6 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   refresh: "normal",
   alertSound: true,
   showOptions: false,
+  trackedManagers: [],
 };
 
 const oneOf = <T extends string>(v: unknown, allowed: readonly T[], d: T): T =>
@@ -66,6 +68,9 @@ export function mergeSettings(raw: unknown): Settings {
     indicators: Array.isArray(r.indicators) ? r.indicators.filter((x): x is string => typeof x === "string") : d.indicators,
     refresh: oneOf(r.refresh, ["fast", "normal", "slow"] as const, d.refresh),
     alertSound: typeof r.alertSound === "boolean" ? r.alertSound : d.alertSound,
+    trackedManagers: Array.isArray(r.trackedManagers)
+      ? [...new Set(r.trackedManagers.filter((x): x is string => typeof x === "string" && x.trim() !== "").map((x) => x.trim().toLowerCase()))]
+      : d.trackedManagers,
     showOptions: typeof r.showOptions === "boolean" ? r.showOptions : d.showOptions,
   };
 }

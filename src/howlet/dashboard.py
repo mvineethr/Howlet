@@ -81,15 +81,23 @@ def create_app(
     def diff(identifier: str):
         return jsonify(views.diff_view(svc, identifier))
 
+    def _managers_arg():
+        raw = request.args.get("managers", "")
+        return [m for m in raw.split(",") if m.strip()] or None
+
     @app.get("/api/consensus")
     def consensus():
         min_managers = int(request.args.get("min", 2))
         limit = int(request.args.get("limit", 20))
-        return jsonify(views.consensus_view(svc, min_managers=min_managers, limit=limit))
+        return jsonify(
+            views.consensus_view(
+                svc, min_managers=min_managers, limit=limit, managers=_managers_arg()
+            )
+        )
 
     @app.get("/api/holders/<symbol>")
     def holders(symbol: str):
-        return jsonify(views.holders_view(svc, symbol))
+        return jsonify(views.holders_view(svc, symbol, managers=_managers_arg()))
 
     @app.get("/api/position-history/<identifier>/<query>")
     def position_history(identifier: str, query: str):
@@ -134,7 +142,7 @@ def create_app(
 
     @app.get("/api/filing-alerts")
     def filing_alerts():
-        return jsonify(views.latest_filings_view(svc))
+        return jsonify(views.latest_filings_view(svc, managers=_managers_arg()))
 
     @app.get("/api/insider-buys")
     def insider_buys():

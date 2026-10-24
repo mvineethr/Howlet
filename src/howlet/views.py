@@ -24,7 +24,7 @@ from .cache import (
 from .client import EdgarClient
 from .consensus import build_consensus_rows, fetch_latest_portfolios
 from .crypto import CryptoClient
-from .diff import STATUS_ORDER, diff_holdings
+from .diff import STATUS_ORDER, _aggregate_by_cusip, diff_holdings
 from .events import CorporateEventsClient, get_fed_events, get_shareholder_meetings
 from .form4 import TRANSACTION_CODE_LABELS, list_form4_filings
 from .fulltext import search_filings
@@ -114,6 +114,21 @@ class Services:
         self.options = OptionsClient(auth=yahoo_auth)
         self.screener_cache = ScreenerCache(cache_dir=cache_dir)
         self.crypto = CryptoClient()
+
+
+def resolve_managers(managers: Optional[list[str]]) -> dict[str, str]:
+    """Preset labels and raw CIKs (4-10 digits) -> {label: cik}; junk ignored.
+
+    None, empty, or nothing valid falls back to every preset.
+    """
+    chosen: dict[str, str] = {}
+    for entry in managers or []:
+        key = entry.strip().lower()
+        if key in FAMOUS_INVESTORS:
+            chosen[key] = FAMOUS_INVESTORS[key]
+        elif key.isdigit() and 4 <= len(key) <= 10:
+            chosen[key] = key
+    return chosen or FAMOUS_INVESTORS
 
 
 def resolve_cik(identifier: str) -> str:
@@ -290,11 +305,16 @@ def diff_view(svc: Services, identifier: str) -> dict:
     }
 
 
-def consensus_view(svc: Services, min_managers: int = 2, limit: int = 20) -> dict:
+def consensus_view(
+    svc: Services,
+    min_managers: int = 2,
+    limit: int = 20,
+    managers: Optional[list[str]] = None,
+) -> dict:
     """Cross-manager holdings overlap across the tracked presets."""
     with svc.edgar_lock:
         portfolios = fetch_latest_portfolios(
-            svc.edgar, FAMOUS_INVESTORS, cache=svc.cache
+            svc.edgar, resolve_managers(managers), cache=svc.cache
         )
     rows = build_consensus_rows(portfolios, min_managers=min_managers)[:limit]
     return {
@@ -316,7 +336,31 @@ def consensus_view(svc: Services, min_managers: int = 2, limit: int = 20) -> dic
     }
 
 
-def holders_view(svc: Services, symbol: str) -> dict:
+def _prior_positions(svc: Services, cik: str) -> Optional[dict]:
+    """Aggregated positions of a manager's previous 13F-HR (None if none)."""
+    with svc.edgar_lock:
+        filings = svc.edgar.list_13f_filings(cik, limit=2)
+        if len(filings) < 2:
+            return None
+        return _aggregate_by_cusip(
+            cached_information_table(svc.edgar, svc.cache, filings[1])
+        )
+
+
+def _holder_action(prior: Optional[dict], cusip: str, shares: float) -> Optional[str]:
+    if prior is None:
+        return None
+    before = prior.get(cusip)
+    if before is None:
+        return "new"
+    if shares > before["shares"]:
+        return "added"
+    return "trimmed" if shares < before["shares"] else "held"
+
+
+def holders_view(
+    svc: Services, symbol: str, managers: Optional[list[str]] = None
+) -> dict:
     """Bloomberg HDS-style: which tracked managers hold this ticker.
 
     Resolves every CUSIP across the tracked managers' latest filings
@@ -325,7 +369,7 @@ def holders_view(svc: Services, symbol: str) -> dict:
     symbol_u = symbol.upper()
     with svc.edgar_lock:
         portfolios = fetch_latest_portfolios(
-            svc.edgar, FAMOUS_INVESTORS, cache=svc.cache
+            svc.edgar, resolve_managers(managers), cache=svc.cache
         )
 
     all_cusips = sorted({c for p in portfolios for c in p.positions})
@@ -345,10 +389,13 @@ def holders_view(svc: Services, symbol: str) -> dict:
     holders = []
     for p in portfolios:
         total = p.total_value_usd
+        prior = None  # lazily fetched: only managers that hold the symbol
         for cusip in matching:
             pos = p.positions.get(cusip)
             if not pos:
                 continue
+            if prior is None:
+                prior = _prior_positions(svc, p.cik)
             holders.append(
                 {
                     "manager": p.label,
@@ -360,6 +407,7 @@ def holders_view(svc: Services, symbol: str) -> dict:
                     "weight_pct": (
                         pos["value_usd"] / total * 100.0 if total else 0.0
                     ),
+                    "action": _holder_action(prior, cusip, pos["shares"]),
                 }
             )
     holders.sort(key=lambda h: h["value_usd"], reverse=True)
@@ -638,7 +686,9 @@ def company_filings_view(
     }
 
 
-def latest_filings_view(svc: Services) -> list[dict]:
+def latest_filings_view(
+    svc: Services, managers: Optional[list[str]] = None
+) -> list[dict]:
     """Every tracked manager's most recent 13F-HR, for new-filing alerts.
 
     One submissions fetch per unique preset CIK (SEC-side cached, cheap).
@@ -648,7 +698,7 @@ def latest_filings_view(svc: Services) -> list[dict]:
     """
     rows = []
     seen_ciks: set[str] = set()
-    for label, cik in FAMOUS_INVESTORS.items():
+    for label, cik in resolve_managers(managers).items():
         if cik in seen_ciks:
             continue
         seen_ciks.add(cik)

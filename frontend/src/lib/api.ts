@@ -1,3 +1,4 @@
+import { useSettings } from "./settings";
 export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
@@ -58,7 +59,8 @@ export type TapeRow = { symbol: string; label: string; price: number; change: nu
 export type NewsItem = { title: string; link: string; source: string; symbol: string | null; published: string | null };
 export type DiffChange = { issuer: string; cusip: string; status: string; value_change_usd: number; shares_change: number; current_value_usd: number };
 export type DiffResult = { prior_period: string | null; current_period: string | null; changes: DiffChange[] };
-export type Holder = { manager: string; period_of_report: string | null; issuer: string; shares: number; value_usd: number; weight_pct: number };
+export type Holder = { manager: string; period_of_report: string | null; issuer: string; shares: number; value_usd: number; weight_pct: number;
+  action: "new" | "added" | "trimmed" | "held" | null };
 export type HoldersResult = { symbol: string; tracked_managers: string[]; holders: Holder[] };
 export type ManagerRef = { label: string; cik: string };
 export type Security = Quote & { exchange?: string | null; instrument_type?: string | null };
@@ -115,11 +117,13 @@ export type OptionsChain = { symbol: string; underlying_price: number | null; ex
 const holdersMemo = new Map<string, { at: number; p: Promise<HoldersResult> }>();
 const HOLDERS_TTL = 10 * 60_000;
 export const clearHoldersMemo = () => holdersMemo.clear();
+const trackedManagers = () => useSettings.getState().settings.trackedManagers;
+const managersQs = (sep: "?" | "&") => { const m = trackedManagers(); return m.length ? `${sep}managers=${encodeURIComponent(m.join(","))}` : ""; };
 function holdersMemoised(symbol: string): Promise<HoldersResult> {
-  const key = symbol.toUpperCase();
+  const key = symbol.toUpperCase() + managersQs("?");
   const hit = holdersMemo.get(key);
   if (hit && Date.now() - hit.at < HOLDERS_TTL) return hit.p;
-  const p = getJson<HoldersResult>(`/api/holders/${encodeURIComponent(key)}`);
+  const p = getJson<HoldersResult>(`/api/holders/${encodeURIComponent(symbol.toUpperCase())}${managersQs("?")}`);
   holdersMemo.set(key, { at: Date.now(), p });
   p.catch(() => { if (holdersMemo.get(key)?.p === p) holdersMemo.delete(key); });
   return p;
@@ -145,7 +149,7 @@ export const api = {
   diff: (manager: string) => getJson<DiffResult>(`/api/diff/${q(manager)}`),
   holders: holdersMemoised,
   managers: () => getJson<ManagerRef[]>("/api/managers"),
-  filingAlerts: () => getJson<FilingAlert[]>("/api/filing-alerts"),
+  filingAlerts: () => getJson<FilingAlert[]>(`/api/filing-alerts${managersQs("?")}`),
   security: (symbol: string, range?: string) => getJson<SecurityDetail>(`/api/security/${q(symbol)}${range ? `?range=${q(range)}` : ""}`),
   events: (s: string) => getJson<Events>(`/api/events/${q(s)}`),
   facts: (s: string) => getJson<Facts>(`/api/facts/${q(s)}`),
@@ -161,7 +165,7 @@ export const api = {
   regulatory: (limit = 15) => getJson<RegDoc[]>(`/api/regulatory?limit=${limit}`),
   screener: (qs: string) => getJson<ScreenerResult>(`/api/screener?${qs}`),
   portfolio: (id: string, top = 25) => memo(`portfolio:${id.toLowerCase()}:${top}`, 10 * 60_000, () => getJson<Portfolio>(`/api/portfolio/${q(id)}?top=${top}`)),
-  consensus: (min = 2, limit = 25) => memo(`consensus:${min}:${limit}`, 10 * 60_000, () => getJson<Consensus>(`/api/consensus?min=${min}&limit=${limit}`)),
+  consensus: (min = 2, limit = 25) => memo(`consensus:${min}:${limit}${managersQs("?")}`, 10 * 60_000, () => getJson<Consensus>(`/api/consensus?min=${min}&limit=${limit}${managersQs("&")}`)),
   insiderBuys: (symbols: string[], filings = 8) => getJson<InsiderBuys>(`/api/insider-buys?filings=${filings}&symbols=${q(symbols.join(","))}`),
   positionHistory: (id: string, query: string, quarters = 8) => getJson<PositionHistory>(`/api/position-history/${q(id)}/${q(query)}?quarters=${quarters}`),
   fulltext: (query: string, forms: string[] = [], limit = 25) =>

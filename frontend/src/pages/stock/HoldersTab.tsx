@@ -12,6 +12,7 @@ const HOLDER_COLS: Column<Holder>[] = [
   { key: "s", label: "Shares", align: "right", render: (r) => num(fmtInt(r.shares)) },
   { key: "v", label: "Value", align: "right", render: (r) => num(fmtMoney(r.value_usd)) },
   { key: "w", label: "Portfolio weight", align: "right", render: (r) => num(`${fmtNum(r.weight_pct, 1)}%`) },
+  { key: "a", label: "Last quarter", render: (r) => r.action ?? "—" },
   { key: "p", label: "As of", render: (r) => r.period_of_report ?? "—" },
 ];
 

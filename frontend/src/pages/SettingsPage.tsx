@@ -1,9 +1,11 @@
 import {
-  Button, Card, Dropdown, Field, Option, Radio, RadioGroup, Switch, Text, Title3, Subtitle2,
+  Button, Card, Checkbox, Dropdown, Field, Input, Option, Radio, RadioGroup, Switch, Text, Title3, Subtitle2,
 } from "@fluentui/react-components";
 import { ArrowUp16Regular, ArrowDown16Regular } from "@fluentui/react-icons";
 import { useRef, useState } from "react";
 import { useRoute } from "../lib/route";
+import { useApi } from "../lib/useApi";
+import { api } from "../lib/api";
 import { useSettings, PAGE_IDS, type PageId, type Settings } from "../lib/settings";
 import { PAGE_META } from "../shell/Rail";
 import { resetHome } from "../lib/homeState";
@@ -12,6 +14,31 @@ import { ACCENT_SWATCHES } from "../theme/tokens";
 
 const RANGES = ["1mo", "3mo", "6mo", "1y", "5y"];
 const SHORTCUTS: [string, string][] = [["Ctrl+K", "Search or command"], ["Ctrl+1 … Ctrl+7", "Jump to rail page"], ["Esc", "Close / clear"], ["Alt+←", "Back"]];
+
+function TrackedManagers() {
+  const { settings: s, update } = useSettings();
+  const presets = useApi("managers", () => api.managers());
+  const [cik, setCik] = useState("");
+  const list = s.trackedManagers;
+  const labels = new Set((presets.data ?? []).map((m) => m.label));
+  const custom = list.filter((m) => !labels.has(m));
+  const toggle = (l: string, on: boolean) => update({ trackedManagers: on ? [...list, l] : list.filter((x) => x !== l) });
+  const valid = /^\d{4,10}$/.test(cik.trim());
+  return (
+    <Field label="Tracked managers" hint={list.length ? `${list.length} selected` : "All presets (nothing selected)"}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        {(presets.data ?? []).map((m) => (
+          <Checkbox key={m.label} label={m.label} checked={list.includes(m.label)} onChange={(_, d) => toggle(m.label, !!d.checked)} />
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+        {custom.map((c) => <Button key={c} size="small" aria-label={`Remove CIK ${c}`} onClick={() => toggle(c, false)}>{c} ✕</Button>)}
+        <Input aria-label="Add CIK" placeholder="Add CIK (digits)" value={cik} onChange={(_, d) => setCik(d.value)} />
+        <Button disabled={!valid} onClick={() => { if (!list.includes(cik.trim())) toggle(cik.trim(), true); setCik(""); }}>Add CIK</Button>
+      </div>
+    </Field>
+  );
+}
 
 export default function SettingsPage() {
   const { settings: s, update } = useSettings();
@@ -100,6 +127,7 @@ export default function SettingsPage() {
         <Field label="Refresh speed (prices, news, crypto)"><RadioGroup layout="horizontal" value={s.refresh} onChange={(_, d) => set("refresh")(d.value as Settings["refresh"])}>
           <Radio value="fast" label="Fast (15s)" /><Radio value="normal" label="Normal (1 min)" /><Radio value="slow" label="Slow (5 min)" />
         </RadioGroup></Field>
+        <TrackedManagers />
         <Switch label="Alert sound" checked={s.alertSound} onChange={(_, d) => set("alertSound")(d.checked)} />
         <Switch label="Show Options tab (experimental)" checked={s.showOptions} onChange={(_, d) => set("showOptions")(d.checked)} />
       </Card>

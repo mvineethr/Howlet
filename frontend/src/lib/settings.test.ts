@@ -36,3 +36,10 @@ test("readJson survives corrupt JSON", () => {
   localStorage.setItem("x", "{not json");
   expect(readJson("x", 5, (v): v is number => typeof v === "number")).toBe(5);
 });
+
+test("trackedManagers keeps non-empty strings, lower-cased and deduped", () => {
+  expect(mergeSettings({}).trackedManagers).toEqual([]);
+  expect(mergeSettings({ trackedManagers: ["Buffett", "buffett", "", 5, "1067983"] }).trackedManagers)
+    .toEqual(["buffett", "1067983"]);
+  expect(mergeSettings({ trackedManagers: "x" }).trackedManagers).toEqual([]);
+});

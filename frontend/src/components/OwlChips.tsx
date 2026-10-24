@@ -12,7 +12,7 @@ export default function OwlChips({ symbol }: { symbol: string }) {
       {holders.map((h) => (
         <Tooltip key={h.manager + h.issuer} relationship="description"
           content={`${h.shares.toLocaleString()} shares · $${(h.value_usd / 1e6).toFixed(0)}M · period ${h.period_of_report ?? "?"}`}>
-          <Tag size="small" appearance="brand">🦉 {h.manager} · {h.weight_pct.toFixed(1)}%</Tag>
+          <Tag size="small" appearance="brand">🦉 {h.manager} · {h.weight_pct.toFixed(1)}%{h.action && h.action !== "held" ? ` · ${h.action}` : ""}</Tag>
         </Tooltip>
       ))}
     </TagGroup>

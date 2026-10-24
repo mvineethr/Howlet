@@ -29,6 +29,7 @@ export default function EconomyTab() {
       <div style={box}>
         <Block fixed title={`Treasury yield curve${m?.treasury_yield_curve?.date ? ` · ${m.treasury_yield_curve.date}` : ""}`}
           loading={macro.loading} error={macro.error} fetchedAt={macro.fetchedAt} refreshMs={HOUR}>
+          {!m && !macro.error && <span style={{ color: "var(--dim)" }}>Loading macro (Treasury, BLS, FRED)…</span>}
           {m && (curve.length ? (
             <DataTable columns={[
               { key: "m", label: "Maturity", render: (r) => r.maturity },
@@ -39,6 +40,7 @@ export default function EconomyTab() {
       </div>
       <div style={box}>
         <Block fixed title="Jobs & inflation" loading={macro.loading} error={macro.error} fetchedAt={macro.fetchedAt} refreshMs={HOUR}>
+          {!m && !macro.error && <span style={{ color: "var(--dim)" }}>Loading macro (Treasury, BLS, FRED)…</span>}
           {m && (
             <>
               {bls.length ? (

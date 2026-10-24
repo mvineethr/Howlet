@@ -7,7 +7,8 @@ import Ticker from "../../components/Ticker";
 import Sparkline from "../../components/Sparkline";
 
 export default function StocksTab() {
-  const refreshMs = REFRESH_MS[useSettings((s) => s.settings.refresh)];
+  // one /api/markets call is ~30 throttled Yahoo requests: never poll faster than classic (5 min)
+  const refreshMs = Math.max(REFRESH_MS[useSettings((s) => s.settings.refresh)], 300_000);
   const { data, error, loading, fetchedAt } = useApi("markets", api.markets, refreshMs);
   if (!data) {
     return (

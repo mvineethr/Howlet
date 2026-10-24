@@ -1,7 +1,8 @@
 type Cell = string | number | null | undefined;
 
 const cell = (v: Cell): string => {
-  const s = v == null ? "" : String(v);
+  const s0 = v == null ? "" : String(v);
+  const s = typeof v === "string" && /^[=+\-@\t\r]/.test(v) ? `'${s0}` : s0; // formula-injection guard
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 };
 

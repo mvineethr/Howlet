@@ -24,7 +24,7 @@ export default function CryptoTab() {
   return (
     <Block fixed title={`Crypto · top ${data?.rows.length ?? 50} by market cap · 24h`} loading={loading} error={error}
       fetchedAt={fetchedAt} refreshMs={refreshMs} actions={data?.source ? <Caption1 style={{ color: "var(--dim)" }}>source: {data.source}</Caption1> : undefined}>
-      {data && <DataTable columns={COLS} rows={data.rows} rowKey={(r) => r.symbol}
+      {data && <DataTable columns={COLS} rows={data.rows} rowKey={(r) => String(r.rank)}
         empty="Crypto data unavailable right now (CoinGecko and Coinpaprika both unreachable)." />}
     </Block>
   );

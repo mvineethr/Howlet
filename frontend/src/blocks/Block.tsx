@@ -1,6 +1,6 @@
 import { Button, Caption1, Card, CardHeader, Spinner, Text } from "@fluentui/react-components";
 import { Dismiss16Regular } from "@fluentui/react-icons";
-import type { ReactNode } from "react";
+import { Children, type ReactNode } from "react";
 
 type Props = {
   title: string; loading?: boolean; error?: Error; fetchedAt?: number; refreshMs?: number;
@@ -21,7 +21,7 @@ export default function Block({ title, loading, error, fetchedAt, refreshMs, sec
           {onRemove && <Button appearance="subtle" size="small" icon={<Dismiss16Regular />} aria-label={`Remove ${title}`} onClick={onRemove} />}
         </span>} />
       <div style={{ flex: 1, overflow: "auto" }}>
-        {error && !children ? (
+        {error && Children.toArray(children).length === 0 ? (
           <Caption1 style={{ color: "var(--dim)" }}>{sec ? error.message : "Unavailable, retrying"}</Caption1>
         ) : children}
       </div>

@@ -2,6 +2,7 @@ import { Tab, TabList } from "@fluentui/react-components";
 import { useRoute } from "../lib/route";
 import { readJson, writeJson } from "../lib/storage";
 import ConsensusTab from "./smart/ConsensusTab";
+import ManagersTab from "./smart/ManagersTab";
 import PlaceholderPage from "./PlaceholderPage";
 
 export type SmartTab = "managers" | "consensus" | "insiders" | "history" | "search" | "funds";
@@ -21,7 +22,8 @@ export default function SmartMoneyPage({ params }: { params: string[] }) {
   const go = useRoute((r) => r.go);
   const tab = resolveSmartTab(params, readJson<string | null>(KEY, null, (v): v is string => typeof v === "string"));
   const pick = (t: SmartTab) => { writeJson(KEY, t); go({ kind: "page", page: "smart", params: [t] }); };
-  const body = tab === "consensus" ? <ConsensusTab />
+  const body = tab === "managers" ? <ManagersTab manager={params[1] ?? "buffett"} />
+    : tab === "consensus" ? <ConsensusTab />
     : <PlaceholderPage title={SMART_TABS.find(([t]) => t === tab)![1]} />;
   return (
     <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>

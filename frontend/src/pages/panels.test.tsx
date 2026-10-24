@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { FluentProvider, webDarkTheme } from "@fluentui/react-components";
 import { FedPanel } from "./markets/panels";
+import { FilingsPanel } from "./stock/panels";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -13,4 +14,10 @@ test("a panel with onRemove shows a remove button and calls it; without, none", 
   unmount();
   render(<FluentProvider theme={webDarkTheme}><FedPanel limit={10} /></FluentProvider>);
   expect(screen.queryByRole("button", { name: /Remove/ })).toBeNull();
+});
+
+test("panels accept a title that shows their subject", () => {
+  vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}"));
+  render(<FluentProvider theme={webDarkTheme}><FilingsPanel symbol="AAPL" title="SEC filings · AAPL" onRemove={() => {}} /></FluentProvider>);
+  expect(screen.getByText("SEC filings · AAPL")).toBeTruthy();
 });

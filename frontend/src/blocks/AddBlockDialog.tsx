@@ -14,12 +14,13 @@ export default function AddBlockDialog({ open, onClose, onAdd }: Props) {
   const set = (k: string, v: string) => setCfg((c) => ({ ...c, [k]: v }));
   const required = needs === "manager" ? ["manager"] : needs === "list" ? ["list"] : needs === "symbol" ? ["symbol"] : needs === "manager-symbol" ? ["manager", "symbol"] : [];
   const ready = !!type && required.every((k) => cfg[k]);
+  const close = () => { setType(""); setCfg({}); onClose(); };
   const submit = () => {
     onAdd(type, Object.fromEntries(required.map((k) => [k, cfg[k]])));
     setType(""); setCfg({});
   };
   return (
-    <Dialog open={open} onOpenChange={(_, d) => { if (!d.open) onClose(); }}>
+    <Dialog open={open} onOpenChange={(_, d) => { if (!d.open) close(); }}>
       <DialogSurface>
         <DialogBody>
           <DialogTitle>Add block</DialogTitle>
@@ -45,7 +46,7 @@ export default function AddBlockDialog({ open, onClose, onAdd }: Props) {
             )}
           </DialogContent>
           <DialogActions>
-            <Button appearance="secondary" onClick={onClose}>Cancel</Button>
+            <Button appearance="secondary" onClick={close}>Cancel</Button>
             <Button appearance="primary" disabled={!ready} onClick={submit}>Add</Button>
           </DialogActions>
         </DialogBody>

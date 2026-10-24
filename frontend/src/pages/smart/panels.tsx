@@ -110,12 +110,12 @@ const BUY_COLS: Column<InsiderBuy>[] = [
   { key: "v", label: "Value", align: "right", render: (r) => num(fmtMoney(r.value_usd)), csv: (r) => r.value_usd },
 ];
 
-export function InsiderBuysPanel({ list, onRemove }: P & { list: string[] }) {
+export function InsiderBuysPanel({ list, title = "Open-market insider buys", onRemove }: P & { list: string[]; title?: string }) {
   const symbols = list;
   const { data, loading, error, fetchedAt } = useApi(symbols.length ? `ibuys:${symbols.join(",")}` : null, () => api.insiderBuys(symbols, 8));
   if (!symbols.length) return <span style={{ color: "var(--dim)" }}>Add stock symbols to this watchlist (Portfolio → Watchlists) to screen them.</span>;
   return (
-    <Block fixed={!onRemove} onRemove={onRemove} sec title="Open-market insider buys" loading={loading} error={error} fetchedAt={fetchedAt}>
+    <Block fixed={!onRemove} onRemove={onRemove} sec title={title} loading={loading} error={error} fetchedAt={fetchedAt}>
       {!data && !error && <span style={{ color: "var(--dim)" }}>{`Scanning Form 4s for ${symbols.length} symbols (first run is the slow one)…`}</span>}
       {data && (
         <>
@@ -141,7 +141,7 @@ const FUND_COLS: Column<FundHolding>[] = [
 export function FundPanel({ symbol, top = 50, onRemove }: P & { symbol: string; top?: number }) {
   const { data, loading, error, fetchedAt } = useApi(`fund:${symbol}:${top}`, () => api.fund(symbol, top));
   return (
-    <Block fixed={!onRemove} onRemove={onRemove} sec title={data?.fund || "Fund holdings"} loading={loading} error={error} fetchedAt={fetchedAt}
+    <Block fixed={!onRemove} onRemove={onRemove} sec title={data?.fund || `Fund holdings · ${symbol}`} loading={loading} error={error} fetchedAt={fetchedAt}
       actions={data?.holdings.length ? <Button size="small" onClick={() => downloadCsv(`${symbol}-holdings.csv`, tableCsv(FUND_COLS, data.holdings))}>Export CSV</Button> : undefined}>
       {data && (
         <>

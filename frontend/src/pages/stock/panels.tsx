@@ -24,13 +24,13 @@ const FILING_COLS: Column<Filing>[] = [
   { key: "p", label: "Period", render: (r) => r.period_of_report ?? "—" },
 ];
 
-type P = { symbol: string; onRemove?: () => void };
+type P = { symbol: string; title?: string; onRemove?: () => void };
 
-export function InsidersPanel({ symbol, onRemove }: P) {
+export function InsidersPanel({ symbol, title = "Insider transactions (Form 4)", onRemove }: P) {
   const ins = useApi(`insiders:${symbol}`, () => api.insiders(symbol, 15), FIVE_MIN);
   const s = ins.data?.summary;
   return (
-    <Block fixed={!onRemove} onRemove={onRemove} sec title="Insider transactions (Form 4)" loading={ins.loading} error={ins.error} fetchedAt={ins.fetchedAt} refreshMs={FIVE_MIN}>
+    <Block fixed={!onRemove} onRemove={onRemove} sec title={title} loading={ins.loading} error={ins.error} fetchedAt={ins.fetchedAt} refreshMs={FIVE_MIN}>
       {ins.data && s && (
         <>
           <div style={{ color: "var(--dim)", marginBottom: 6 }}>
@@ -44,10 +44,10 @@ export function InsidersPanel({ symbol, onRemove }: P) {
   );
 }
 
-export function FilingsPanel({ symbol, onRemove }: P) {
+export function FilingsPanel({ symbol, title = "SEC filings", onRemove }: P) {
   const fil = useApi(`filings:${symbol}`, () => api.filings(symbol, 15), FIVE_MIN);
   return (
-    <Block fixed={!onRemove} onRemove={onRemove} sec title="SEC filings" loading={fil.loading} error={fil.error} fetchedAt={fil.fetchedAt} refreshMs={FIVE_MIN}>
+    <Block fixed={!onRemove} onRemove={onRemove} sec title={title} loading={fil.loading} error={fil.error} fetchedAt={fil.fetchedAt} refreshMs={FIVE_MIN}>
       {fil.data && <DataTable columns={FILING_COLS} rows={fil.data.filings} rowKey={(r) => r.accession_number} empty="No recent SEC filings." />}
     </Block>
   );

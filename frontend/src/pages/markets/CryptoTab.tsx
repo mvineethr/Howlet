@@ -19,7 +19,8 @@ const COLS: Column<CryptoRow>[] = [
 ];
 
 export default function CryptoTab({ limit = 50, onRemove }: { limit?: number; onRemove?: () => void }) {
-  const refreshMs = REFRESH_MS[useSettings((s) => s.settings.refresh)];
+  // CoinGecko keyless tier is rate-limited: never poll faster than 2 min
+  const refreshMs = Math.max(REFRESH_MS[useSettings((s) => s.settings.refresh)], 120_000);
   const { data, error, loading, fetchedAt } = useApi(`crypto:${limit}`, () => api.crypto(limit), refreshMs);
   return (
     <Block fixed={!onRemove} onRemove={onRemove} title={`Crypto · top ${data?.rows.length ?? limit} by market cap · 24h`} loading={loading} error={error}

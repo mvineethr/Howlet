@@ -3,8 +3,7 @@ export class ApiError extends Error {
   constructor(message: string, public status: number) { super(message); }
 }
 
-export async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(path);
+async function parse<T>(res: Response): Promise<T> {
   let body: unknown = null;
   try { body = await res.json(); } catch { /* non-JSON body */ }
   if (!res.ok) {
@@ -14,16 +13,29 @@ export async function getJson<T>(path: string): Promise<T> {
   return body as T;
 }
 
-export async function postJson<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  let data: unknown = null;
-  try { data = await res.json(); } catch { /* non-JSON body */ }
-  if (!res.ok) {
-    const msg = data && typeof data === "object" && "error" in data ? String((data as { error: unknown }).error) : `HTTP ${res.status}`;
-    throw new ApiError(msg, res.status);
-  }
-  return data as T;
-}
+export const getJson = <T,>(path: string): Promise<T> => fetch(path).then((r) => parse<T>(r));
+export const postJson = <T,>(path: string, body: unknown): Promise<T> =>
+  fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => parse<T>(r));
+export const deleteJson = <T,>(path: string): Promise<T> => fetch(path, { method: "DELETE" }).then((r) => parse<T>(r));
+
+export type PaperOrder = {
+  id: string; ts: string; symbol: string; side: "buy" | "sell"; qty: number; type: "market" | "limit" | "stop";
+  limit: number | null; stop: number | null; tif: "day" | "gtc";
+  status: "open" | "filled" | "cancelled" | "rejected" | "expired";
+  fill: { ts: string; price: number } | null; reason: string | null; ref_price: number; closed_at: string | null;
+};
+export type PaperPosition = { symbol: string; qty: number; avg_cost: number; cost_basis: number; price: number | null;
+  value: number | null; unrealized: number | null; unrealized_pct: number | null };
+export type PaperAccountData = {
+  account: { id: string; created: string; start_cash: number }; cash: number; positions: PaperPosition[];
+  positions_value: number; equity: number; day_change: number; total_return_pct: number; realized_pnl: number;
+  open_orders: PaperOrder[]; activity: PaperOrder[]; market_open: boolean; prices_unavailable: string[];
+};
+export type PaperAccount = PaperAccountData | { account: null; market_open: boolean };
+export type PaperHistory = { dates: string[]; account: number[]; spy: number[];
+  account_return_pct: number | null; spy_return_pct: number | null };
+export type PaperOrderRequest = { symbol: string; side: "buy" | "sell"; qty: number; type: "market" | "limit" | "stop";
+  limit: number | null; stop: number | null; tif: "day" | "gtc" };
 export type PortfolioPosition = { issuer: string; cusip: string; value_usd: number; shares: number; share_type: string;
   weight_pct: number; ticker: string | null; price: number | null; change_pct: number | null; currency: string | null; sparkline: number[] };
 export type Portfolio = { identifier: string; cik: string; period_of_report: string | null; filing_date: string | null;
@@ -143,6 +155,11 @@ function memo<T>(key: string, ttlMs: number, fetch: () => Promise<T>): Promise<T
 
 const q = encodeURIComponent;
 export const api = {
+  paperAccount: () => getJson<PaperAccount>("/api/paper"),
+  paperHistory: () => getJson<PaperHistory>("/api/paper/history"),
+  paperOrder: (o: PaperOrderRequest) => postJson<PaperOrder>("/api/paper/orders", o),
+  paperCancel: (id: string) => deleteJson<PaperOrder>(`/api/paper/orders/${q(id)}`),
+  paperReset: (startCash: number) => postJson<PaperAccount>("/api/paper/reset", { start_cash: startCash }),
   quotes: (symbols: string[]) => getJson<Quote[]>(`/api/quotes?symbols=${q(symbols.slice(0, 30).join(","))}`),
   tape: () => getJson<TapeRow[]>("/api/tape"),
   news: (limit = 20) => getJson<NewsItem[]>(`/api/news?limit=${limit}`),

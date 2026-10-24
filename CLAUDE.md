@@ -41,7 +41,7 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 | `nport.py` | N-PORT fund holdings: ticker->series via company_tickers_mf.json, series-scoped browse-edgar for accessions, primary_doc.xml parse. UITs (SPY) have no NPORT trail |
 | `yahoo_auth.py` | Yahoo cookie+crumb workaround for walled endpoints; consumers must degrade, never raise |
 | `views.py` | Shared JSON view layer - Flask endpoints AND MCP tools both wrap these |
-| `dashboard.py` | Flask wiring only; UI lives in `dashboard.html` (single file, vanilla JS) |
+| `dashboard.py` | Flask wiring only; serves the React app at `/` (from `frontend/`, built into `static/app/`) and the classic UI (`dashboard.html`, single file, vanilla JS) at `/classic` until plan 2 ports the remaining screens |
 | `mcp_server.py` | FastMCP stdio server, 27 tools (optional dep: `pip install "howlet[mcp]"`) |
 | `frontend/` | React + Fluent UI v9 app (Vite), builds into `static/app/`; served at `/`. Old UI at `/classic` until plan 2 completes |
 
@@ -184,7 +184,7 @@ day). Browser localStorage holds watchlists, personal portfolio, layout.
 
 ## Status
 
-All working and verified live. **11 screens**, one URL, no routing:
+All working and verified live. React app at `/` (from `frontend/`, built into `static/app/`); classic UI at `/classic` until plan 2 ports the remaining screens. Classic has **11 screens**, one URL, no routing:
 HOME (blank slate, "+ ADD BLOCK" picker over 17 widget types, "+ TAB"
 user tabs, per-block wide/tall toggles, named layout snapshots, multiple
 named watchlists, RESTORE CLASSIC LAYOUT), PORT, DES (vendored

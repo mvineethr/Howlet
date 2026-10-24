@@ -21,3 +21,7 @@ test("visibleRail respects order and hidden pages", () => {
   expect(rail[0]).toBe("news");
   expect(rail).not.toContain("screener");
 });
+
+test("malformed percent-encoding does not throw", () => {
+  expect(parseHash("#/stock/100%", "home")).toEqual({ kind: "stock", symbol: "100%", tab: "overview" });
+});

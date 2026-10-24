@@ -1,3 +1,4 @@
+button, input, select, textarea { font: inherit; }
 body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font-text); }
 [data-density="compact"] .fui-Card { padding: 6px; gap: 4px; }
 [data-density="compact"] td { padding-top: 1px !important; padding-bottom: 1px !important; }

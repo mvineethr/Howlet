@@ -9,6 +9,7 @@ import { useRoute } from "../lib/route";
 
 const SEEN_KEY = "howlet_seen_filings_v1"; // shared with the classic page
 const isRecord = (v: unknown): v is Record<string, string> => !!v && typeof v === "object" && !Array.isArray(v);
+const notified = new Set<string>(); // per session, like classic
 const chime = () => {
   try { // 150 ms 880 Hz tone: no audio asset to ship
     const ctx = new AudioContext(), osc = ctx.createOscillator(), gain = ctx.createGain();
@@ -56,7 +57,7 @@ export default function AlertsBell() {
       return;
     }
     const fresh = rows.filter((r) => seen[r.cik] && seen[r.cik] !== r.accession_number);
-    fresh.forEach((f) => notify(`New 13F filing: ${f.label.toUpperCase()}`, `Filed ${f.filing_date}`));
+    fresh.filter((f) => !notified.has(f.accession_number)).forEach((f) => { notified.add(f.accession_number); notify(`New 13F filing: ${f.label.toUpperCase()}`, `Filed ${f.filing_date}`); });
     setNewFilings(fresh);
   }, []);
 

@@ -15,7 +15,7 @@ export default function NewsBlock({ onRemove }: { onRemove?: () => void }) {
     <Block title="News" {...{ loading, error, fetchedAt, refreshMs: 300_000, onRemove }}>
       {data?.map((n) => (
         <div key={n.link} style={{ padding: "4px 0", borderBottom: "1px solid var(--hair)" }}>
-          <Link href={n.link} target="_blank" rel="noreferrer">{n.title}</Link>
+          <Link href={/^https?:\/\//i.test(n.link) ? n.link : undefined} target="_blank" rel="noreferrer">{n.title}</Link>
           <div style={{ color: "var(--dim)", fontSize: "0.85em" }}>{n.source} · {ago(n.published)}</div>
         </div>
       ))}

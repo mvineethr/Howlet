@@ -26,10 +26,11 @@ export function migrateLayout(legacy: unknown): HomeState | null {
     const blocks: HomeBlock[] = [];
     let x = 0, y = 0, rowH = 0;
     for (const w of t.widgets as LegacyWidget[]) {
+      if (!isObj(w) || typeof w.id !== "string" || typeof w.type !== "string") continue;
       const width = w.wide || ALWAYS_WIDE.has(w.type) ? 12 : 6;
       const h = w.tall ? 16 : 8;
       if (x + width > 12) { x = 0; y += rowH; rowH = 0; }
-      blocks.push({ i: w.id, type: w.type, config: w.config ?? {}, x, y, w: width, h });
+      blocks.push({ i: w.id, type: w.type, config: isObj(w.config) ? (w.config as Record<string, string>) : {}, x, y, w: width, h });
       x += width; rowH = Math.max(rowH, h);
     }
     tabs.push({ id: t.id, name: String(t.name ?? t.id), blocks });

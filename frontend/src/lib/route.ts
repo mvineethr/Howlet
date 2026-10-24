@@ -6,7 +6,7 @@ const STOCK_TABS: StockTab[] = ["overview", "chart", "financials", "holders", "n
 export type Route = { kind: "page"; page: PageId } | { kind: "stock"; symbol: string; tab: StockTab };
 
 export function parseHash(hash: string, fallback: PageId): Route {
-  const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean).map((p) => { try { return decodeURIComponent(p); } catch { return p; } });
   if (parts[0] === "stock" && parts[1]) {
     const tab = (STOCK_TABS as string[]).includes(parts[2]) ? (parts[2] as StockTab) : "overview";
     return { kind: "stock", symbol: parts[1].toUpperCase(), tab };

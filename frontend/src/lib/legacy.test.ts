@@ -42,3 +42,8 @@ test("loadHome prefers new key, then non-empty legacy, then first run", () => {
   localStorage.setItem(HOME_KEY, JSON.stringify({ tabs: [{ id: "t", name: "Mine", blocks: [] }], active: "t" }));
   expect(loadHome(first).active).toBe("t");
 });
+
+test("migrateLayout skips junk widget entries", () => {
+  const home = migrateLayout({ tabs: [{ id: "t", widgets: [null, 5, { id: "a", type: "watchlist" }] }] })!;
+  expect(home.tabs[0].blocks.map((b) => b.i)).toEqual(["a"]);
+});

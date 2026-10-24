@@ -6,6 +6,7 @@ import { REFRESH_MS, useSettings } from "../lib/settings";
 import Num from "../components/Num";
 import OwlChips from "../components/OwlChips";
 import OverviewTab from "./stock/OverviewTab";
+import ChartTab from "./stock/ChartTab";
 import PlaceholderPage from "./PlaceholderPage";
 
 const TABS: [StockTab, string][] = [["overview", "Overview"], ["chart", "Chart"], ["financials", "Financials"], ["holders", "Holders"], ["news", "News"], ["options", "Options"]];
@@ -31,6 +32,8 @@ export default function StockPage({ symbol, tab }: { symbol: string; tab: StockT
       </TabList>
       {tab === "overview" ? (
         <OverviewTab symbol={symbol} q={q} />
+      ) : tab === "chart" ? (
+        <ChartTab symbol={symbol} />
       ) : (
         <PlaceholderPage title={TABS.find(([t]) => t === tab)?.[1] ?? tab} />
       )}

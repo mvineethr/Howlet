@@ -26,7 +26,7 @@ dev = [
     "ruff>=0.4",
 ]
 mcp = [
-    "mcp>=1.2",
+    "mcp>=1.2,<2",  # mcp 2.x renamed FastMCP (mcp_server.py uses the v1 API); migrate deliberately
 ]
 
 [project.scripts]

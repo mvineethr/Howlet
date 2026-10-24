@@ -28,6 +28,8 @@ export type HoldersResult = { symbol: string; tracked_managers: string[]; holder
 export type ManagerRef = { label: string; cik: string };
 export type Security = Quote & { exchange?: string | null; instrument_type?: string | null };
 
+export type FilingAlert = { label: string; cik: string; accession_number: string; filing_date: string; period_of_report: string | null };
+
 const q = encodeURIComponent;
 export const api = {
   quotes: (symbols: string[]) => getJson<Quote[]>(`/api/quotes?symbols=${q(symbols.slice(0, 30).join(","))}`),
@@ -36,5 +38,6 @@ export const api = {
   diff: (manager: string) => getJson<DiffResult>(`/api/diff/${q(manager)}`),
   holders: (symbol: string) => getJson<HoldersResult>(`/api/holders/${q(symbol)}`),
   managers: () => getJson<ManagerRef[]>("/api/managers"),
+  filingAlerts: () => getJson<FilingAlert[]>("/api/filing-alerts"),
   security: (symbol: string) => getJson<Security>(`/api/security/${q(symbol)}`),
 };

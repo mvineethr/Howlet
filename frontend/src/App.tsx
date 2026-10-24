@@ -6,6 +6,7 @@ import { useRoute, visibleRail } from "./lib/route";
 import Rail, { PAGE_META } from "./shell/Rail";
 import TopBar from "./shell/TopBar";
 import CommandBox from "./shell/CommandBox";
+import AlertsBell from "./shell/AlertsBell";
 import PlaceholderPage from "./pages/PlaceholderPage";
 import StockPage from "./pages/StockPage";
 import HomePage from "./pages/HomePage";
@@ -47,7 +48,7 @@ export default function App() {
   return (
     <FluentProvider theme={theme} style={{ height: "100vh", display: "flex", flexDirection: "column", fontSize: TEXT_SCALE[settings.textSize] }}
       data-density={settings.density}>
-      <TopBar center={<CommandBox />} />
+      <TopBar center={<CommandBox />} right={<AlertsBell />} />
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         <Rail />
         <main style={{ flex: 1, overflow: "auto", background: "var(--bg)" }}>{page}</main>

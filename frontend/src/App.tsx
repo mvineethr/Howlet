@@ -7,6 +7,7 @@ import Rail, { PAGE_META } from "./shell/Rail";
 import TopBar from "./shell/TopBar";
 import CommandBox from "./shell/CommandBox";
 import PlaceholderPage from "./pages/PlaceholderPage";
+import HomePage from "./pages/HomePage";
 
 const prefersDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
 const TEXT_SCALE = { small: "13px", medium: "14px", large: "16px" } as const;
@@ -40,7 +41,7 @@ export default function App() {
 
   const page = route.kind === "stock"
     ? <PlaceholderPage title={route.symbol} />
-    : <PlaceholderPage title={PAGE_META[route.page].label} />;
+    : route.page === "home" ? <HomePage /> : <PlaceholderPage title={PAGE_META[route.page].label} />;
 
   return (
     <FluentProvider theme={theme} style={{ height: "100vh", display: "flex", flexDirection: "column", fontSize: TEXT_SCALE[settings.textSize] }}

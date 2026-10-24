@@ -3,6 +3,8 @@ import { useRoute } from "../lib/route";
 import { readJson, writeJson } from "../lib/storage";
 import ConsensusTab from "./smart/ConsensusTab";
 import ManagersTab from "./smart/ManagersTab";
+import InsiderBuysTab from "./smart/InsiderBuysTab";
+import PositionHistoryTab from "./smart/PositionHistoryTab";
 import PlaceholderPage from "./PlaceholderPage";
 
 export type SmartTab = "managers" | "consensus" | "insiders" | "history" | "search" | "funds";
@@ -24,6 +26,8 @@ export default function SmartMoneyPage({ params }: { params: string[] }) {
   const pick = (t: SmartTab) => { writeJson(KEY, t); go({ kind: "page", page: "smart", params: [t] }); };
   const body = tab === "managers" ? <ManagersTab manager={params[1] ?? "buffett"} />
     : tab === "consensus" ? <ConsensusTab />
+    : tab === "insiders" ? <InsiderBuysTab />
+    : tab === "history" ? <PositionHistoryTab manager={params[1] ?? ""} query={params[2] ?? ""} />
     : <PlaceholderPage title={SMART_TABS.find(([t]) => t === tab)![1]} />;
   return (
     <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>

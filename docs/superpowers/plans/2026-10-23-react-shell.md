@@ -617,7 +617,7 @@ git commit -m "Frontend: crash-proof storage and settings store"
 **Interfaces:**
 - Produces:
   - `api.ts`: `class ApiError extends Error { status: number }`; `getJson<T>(path: string): Promise<T>`, which throws `ApiError` with the server's `{"error": ...}` text on non-2xx; the types `Quote`, `TapeRow`, `NewsItem`, `DiffResult`, `HoldersResult`, `ManagerRef`, `Security`; and the wrappers `api.quotes(symbols)`, `api.tape()`, `api.news(limit)`, `api.diff(manager)`, `api.holders(symbol)`, `api.managers()`, `api.security(symbol)`.
-  - `useApi.ts`: `useApi<T>(key: string | null, fetcher: () => Promise<T>, refreshMs?: number): { data: T | undefined; error: ApiError | Error | undefined; loading: boolean; fetchedAt: number | undefined; reload: () => void }`. A `null` key means don't fetch. A failed refresh keeps the last data and sets `error`.
+  - `useApi.ts`: `useApi<T>(key: string | null, fetcher: () => Promise<T>, refreshMs?: number): { data: T | undefined; error: ApiError | Error | undefined; loading: boolean; fetchedAt: number | undefined; reload: () => void }`. A `null` key means don't fetch. A failed refresh keeps the last data and sets `error`. Responses from any request older than the latest (after a key change, an overlapping refresh, or an unmount) are ignored. A request counter was added in review (commit 56d455a), approved by Vineeth.
 
 - [ ] **Step 1: Write the failing test**
 

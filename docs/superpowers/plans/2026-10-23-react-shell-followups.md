@@ -94,3 +94,17 @@ Still open:
 
 ## /classic retired (plan 2d, 2026-10-24)
 `/classic` and `dashboard.html` are gone; `/classic` now 404s and `/` returns a plain-text 503 if `static/app` was never built. The React app reads the old localStorage keys (lib/legacy.ts), so user data carries over. Comments saying "shared with the classic page" in lib/ are now just history.
+
+## Added by plan 2d (2026-10-24)
+Resolved in 2d: all classic Home blocks ported (18 types), Home tabs + named layouts (confirm on load/delete/overwrite),
+Help page, tracked managers + 🦉 chip actions, SEC re-hit on Smart Money visits (api memo), filing-alert rows link to the
+manager, bare `W` → Portfolio, malformed watchlists no longer brick Home, `/classic` retired. Live verification also found
+that NO Home block could be removed with a real mouse (the ✕ sat inside the drag handle) — fixed with `draggableCancel`.
+Still open:
+- Holder actions cost extra SEC calls per manager (prior filing); could reuse a `limit=2` fetch.
+- No route test for the `managers` param on `/api/holders` and `/api/filing-alerts`; "exited" chip action not implemented.
+- SmartMoneyBlock polls `/api/diff` hourly although filings change quarterly.
+- Snapshots with `{tabs:[null]}` aren't validated on load.
+- Parity gaps accepted as minor: no clock, no `?cmd=`, bare PORT/DES/OPT/ALERT differ, tape is a block, no inline block
+  editing, no "+ new list" in the Add-block dialog.
+- Cosmetic: DES row indent; position-history block title; debugging-playbook SKILL.md:54 stale line.

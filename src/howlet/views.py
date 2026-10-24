@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import os
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+from . import paper
 from .cache import (
     FilingCache,
     Form4Cache,
@@ -114,6 +116,7 @@ class Services:
         self.options = OptionsClient(auth=yahoo_auth)
         self.screener_cache = ScreenerCache(cache_dir=cache_dir)
         self.crypto = CryptoClient()
+        self.paper = paper.PaperStore(cache_dir=cache_dir)
 
 
 def resolve_managers(managers: Optional[list[str]]) -> dict[str, str]:
@@ -1174,3 +1177,67 @@ def news_view(
         }
         for i in items
     ]
+
+
+# ---- paper trading (fake money; see paper.py) ----
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def paper_account_view(svc, now: Optional[datetime] = None) -> dict:
+    """Settle open orders, then cash, positions at live prices, orders and recent activity."""
+    now, prices = now or _now(), paper.MarketPrices(svc.market)
+    with paper.LOCK:
+        state = svc.paper.load()
+        if state is None:
+            return {"account": None, "market_open": prices.market_open(now)}
+        paper.settle(state, prices, now)
+        svc.paper.save(state)
+        return paper.summary(state, prices, now)
+
+
+def paper_order_view(svc, symbol: str, side: str, qty, type: str = "market", limit=None, stop=None,
+                     tif: str = "day", now: Optional[datetime] = None) -> dict:
+    """Place a paper order (creates a default account on first use). Raises paper.PaperError."""
+    now, prices = now or _now(), paper.MarketPrices(svc.market)
+    with paper.LOCK:
+        state = svc.paper.load()
+        if state is not None:
+            paper.settle(state, prices, now)
+        state, order = paper.place_order(state, prices, now, symbol, side, qty, type=type,
+                                         limit=limit, stop=stop, tif=tif)
+        svc.paper.save(state)
+        return order
+
+
+def paper_cancel_view(svc, order_id: str, now: Optional[datetime] = None) -> dict:
+    now, prices = now or _now(), paper.MarketPrices(svc.market)
+    with paper.LOCK:
+        state = svc.paper.load()
+        if state is None:
+            raise LookupError("No paper account yet")
+        paper.settle(state, prices, now)  # an order that already filled can't be cancelled
+        order = paper.cancel_order(state, order_id, now)
+        svc.paper.save(state)
+        return order
+
+
+def paper_history_view(svc, now: Optional[datetime] = None) -> dict:
+    now, prices = now or _now(), paper.MarketPrices(svc.market)
+    with paper.LOCK:
+        state = svc.paper.load()
+        if state is None:
+            return {"dates": [], "account": [], "spy": [], "account_return_pct": None, "spy_return_pct": None}
+        paper.settle(state, prices, now)
+        svc.paper.save(state)
+        return paper.history(state, prices, now)
+
+
+def paper_reset_view(svc, start_cash=paper.DEFAULT_START_CASH, now: Optional[datetime] = None) -> dict:
+    """Archive the current paper account and start a fresh one. Deliberately not an MCP tool."""
+    now, prices = now or _now(), paper.MarketPrices(svc.market)
+    with paper.LOCK:
+        state = paper.reset(svc.paper.load(), start_cash, now)
+        svc.paper.save(state)
+        return paper.summary(state, prices, now)

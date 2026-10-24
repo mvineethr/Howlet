@@ -25,6 +25,7 @@ import requests
 from flask import Flask, Response, jsonify, request
 
 from . import views
+from .paper import DEFAULT_START_CASH, PaperError
 from .views import Services
 
 # Kept as aliases so existing imports/tests keep working.
@@ -52,6 +53,10 @@ def create_app(
     @app.errorhandler(LookupError)
     def not_found(exc):
         return jsonify({"error": str(exc)}), 404
+
+    @app.errorhandler(PaperError)
+    def bad_request(exc):
+        return jsonify({"error": str(exc)}), 400
 
     @app.get("/")
     def index() -> Response:
@@ -227,6 +232,32 @@ def create_app(
         holdings = body.get("holdings", [])
         range_ = body.get("range", "1y")
         return jsonify(views.risk_view(svc, holdings, range_=range_))
+
+    @app.get("/api/paper")
+    def paper_account():
+        return jsonify(views.paper_account_view(svc))
+
+    @app.get("/api/paper/history")
+    def paper_history():
+        return jsonify(views.paper_history_view(svc))
+
+    @app.post("/api/paper/orders")
+    def paper_order():
+        b = request.get_json(force=True, silent=True) or {}
+        order = views.paper_order_view(
+            svc, b.get("symbol", ""), b.get("side", ""), b.get("qty"), type=b.get("type", "market"),
+            limit=b.get("limit"), stop=b.get("stop"), tif=b.get("tif", "day"),
+        )
+        return jsonify(order), 201
+
+    @app.delete("/api/paper/orders/<order_id>")
+    def paper_cancel(order_id: str):
+        return jsonify(views.paper_cancel_view(svc, order_id))
+
+    @app.post("/api/paper/reset")
+    def paper_reset():
+        b = request.get_json(force=True, silent=True) or {}
+        return jsonify(views.paper_reset_view(svc, b.get("start_cash", DEFAULT_START_CASH)))
 
     return app
 

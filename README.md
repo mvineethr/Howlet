@@ -237,7 +237,7 @@ Claude Desktop (`claude_desktop_config.json`):
   "env": {"EDGAR_USER_AGENT": "Your Name you@example.com"}}}}
 ```
 
-Exposed tools (27): `search_manager`, `list_managers`, `get_portfolio`,
+Exposed tools (30): `search_manager`, `list_managers`, `get_portfolio`,
 `get_portfolio_changes`, `get_consensus`, `get_holders`,
 `get_position_history` (a manager's stake across quarters),
 `get_insider_transactions` (Form 4), `screen_insider_buys` (open-market
@@ -249,7 +249,8 @@ P buys across a symbol list), `get_latest_filings` (new-13F detection),
 `get_crypto_markets`, `get_fx_matrix` (ECB cross rates),
 `get_sec_rulemaking` (Federal Register), `get_corporate_events`,
 `get_fed_calendar`, `get_macro_snapshot`, `screen_securities`,
-`get_options_chain`, `analyze_portfolio_risk`.
+`get_options_chain`, `analyze_portfolio_risk`, `paper_account`, `paper_order`,
+`paper_cancel` (fake-money paper trading).
 
 ## Data source tiers (honesty section)
 

@@ -5,7 +5,7 @@
 A free, no-API-key, open-source Bloomberg-style terminal built on SEC
 EDGAR 13F data ("what is Warren Buffett buying"), grown into a full
 market terminal: web dashboard (`howlet dashboard`), CLI, Python
-library, and an MCP server (`howlet mcp`, 27 tools) so any AI agent
+library, and an MCP server (`howlet mcp`, 30 tools) so any AI agent
 can drive it. Everything is verified live against the real APIs, not
 just offline mocks - that habit has caught a real bug almost every
 session (see Gotchas).
@@ -29,6 +29,7 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 | `fundamentals.py` | SEC XBRL companyfacts: annual 10-K metrics, shares outstanding (dei) |
 | `indicators.py` | Pure-math studies: SMA/EMA/RSI/MACD/Bollinger/ORB |
 | `risk.py` | Pure-math portfolio risk: volatility, max drawdown, Sharpe |
+| `paper.py` | Paper trading (fake money): append-only order ledger in `~/.howlet/paper.json`, fills market/limit/stop orders from real Yahoo bars on every read (`settle`), SPY benchmark |
 | `screener.py` | Screener over a curated universe (SEC fundamentals + chart quotes only) |
 | `news.py` | RSS aggregation: Yahoo/CNBC/CNBC Earnings/MarketWatch/Google News/Seeking Alpha/SEC; per-ticker feeds |
 | `events.py` | Earnings date + analyst mix (Yahoo, crumb-authed), DEF 14A proxies (EDGAR), Fed RSS |
@@ -42,7 +43,7 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 | `yahoo_auth.py` | Yahoo cookie+crumb workaround for walled endpoints; consumers must degrade, never raise |
 | `views.py` | Shared JSON view layer - Flask endpoints AND MCP tools both wrap these |
 | `dashboard.py` | Flask wiring only; serves the React build (`static/app/index.html`) at `/`, or a plain-text 503 if it was never built. The old vanilla-JS `dashboard.html` / `/classic` was retired 2026-10-24 |
-| `mcp_server.py` | FastMCP stdio server, 27 tools (optional dep: `pip install "howlet[mcp]"`) |
+| `mcp_server.py` | FastMCP stdio server, 30 tools (optional dep: `pip install "howlet[mcp]"`) |
 | `frontend/` | React + Fluent UI v9 app (Vite), the only UI; builds into `static/app/`, served at `/` |
 
 ## Hard rules
@@ -182,7 +183,7 @@ poll), EDGAR full-text search, company filings feed, N-PORT fund
 holdings (ARKK verified; UITs like SPY correctly error), FX cross-rate
 matrix, crypto top-20, `howlet warm`, CSV exports (screener, manager
 portfolio/changes, consensus, financials, fund holdings), and an export/import
-state backup (Settings -> Layouts & backup, `howlet-backup-<date>.json`). Settings -> Tracked managers picks which presets and custom CIKs drive alerts, and the owl chip shows each holder's last-quarter action (new/added/trimmed/held). **MCP: 27 tools.** Presets: **14 managers** (Buffett, Burry,
+state backup (Settings -> Layouts & backup, `howlet-backup-<date>.json`). Settings -> Tracked managers picks which presets and custom CIKs drive alerts, and the owl chip shows each holder's last-quarter action (new/added/trimmed/held). **MCP: 30 tools.** Presets: **14 managers** (Buffett, Burry,
 Ackman, Icahn, Tepper, Klarman, Loeb, Dalio, Druckenmiller, Marks,
 Li Lu, Einhorn/DME, Fundsmith, Tiger Global), every CIK verified live
 against a current 13F-HR. CI (ruff + pytest, 6 legs) and Docker.

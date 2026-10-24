@@ -31,3 +31,7 @@ test("bad alert syntax explains itself", () => {
 test("empty input is null", () => {
   expect(parseCommand("   ", M)).toBeNull();
 });
+
+test.each(["help", "?", "about", "FAQ"])("%s opens the help page", (c) => {
+  expect(parseCommand(c, M)).toEqual({ kind: "go", route: { kind: "page", page: "settings", params: ["help"] } });
+});

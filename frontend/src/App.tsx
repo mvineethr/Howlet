@@ -11,6 +11,7 @@ import PlaceholderPage from "./pages/PlaceholderPage";
 import StockPage from "./pages/StockPage";
 import HomePage from "./pages/HomePage";
 import SettingsPage from "./pages/SettingsPage";
+import HelpPage from "./pages/HelpPage";
 import NewsPage from "./pages/NewsPage";
 import MarketsPage from "./pages/MarketsPage";
 import SmartMoneyPage from "./pages/SmartMoneyPage";
@@ -21,7 +22,7 @@ const PAGES: Partial<Record<PageId, (params: string[]) => JSX.Element>> = {
   smart: (params) => <SmartMoneyPage params={params} />,
   portfolio: (params) => <PortfolioPage params={params} />,
   home: () => <HomePage />, markets: () => <MarketsPage />, news: () => <NewsPage />,
-  screener: () => <ScreenerPage />, settings: () => <SettingsPage />,
+  screener: () => <ScreenerPage />, settings: (params) => (params[0] === "help" ? <HelpPage /> : <SettingsPage />),
 };
 
 const prefersDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;

@@ -3,6 +3,7 @@ import {
 } from "@fluentui/react-components";
 import { ArrowUp16Regular, ArrowDown16Regular } from "@fluentui/react-icons";
 import { useRef, useState } from "react";
+import { useRoute } from "../lib/route";
 import { useSettings, PAGE_IDS, type PageId, type Settings } from "../lib/settings";
 import { PAGE_META } from "../shell/Rail";
 import { resetHome } from "../lib/homeState";
@@ -14,6 +15,7 @@ const SHORTCUTS: [string, string][] = [["Ctrl+K", "Search or command"], ["Ctrl+1
 
 export default function SettingsPage() {
   const { settings: s, update } = useSettings();
+  const go = useRoute((r) => r.go);
   const [msg, setMsg] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
   const set = <K extends keyof Settings>(k: K) => (v: Settings[K]) => update({ [k]: v } as Partial<Settings>);
@@ -110,6 +112,11 @@ export default function SettingsPage() {
           <input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importState(e.target.files[0])} />
         </div>
         {msg && <Text role="status">{msg}</Text>}
+      </Card>
+
+      <Card><Subtitle2>Help &amp; glossary</Subtitle2>
+        <Text>What every short form means, the command box, rail pages and Home blocks.</Text>
+        <div><Button onClick={() => go({ kind: "page", page: "settings", params: ["help"] })}>Open help</Button></div>
       </Card>
 
       <Card><Subtitle2>Keyboard shortcuts</Subtitle2>

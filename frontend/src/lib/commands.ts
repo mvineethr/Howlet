@@ -10,7 +10,7 @@ export type Command =
 const PAGES: Record<string, PageId> = {
   HOME: "home", DASH: "home", MKTS: "markets", WEI: "markets", FXC: "markets", ECO: "markets",
   NEWS: "news", N: "news", TOP: "news", EQS: "screener", PF: "portfolio", MY: "portfolio",
-  WATCH: "portfolio", SETTINGS: "settings", HELP: "settings",
+  WATCH: "portfolio", SETTINGS: "settings",
 };
 const FUNCS: Record<string, StockTab> = { DES: "overview", GP: "chart", GIP: "chart", FA: "financials", HDS: "holders", OPT: "options", OMON: "options", CN: "news" };
 
@@ -26,6 +26,7 @@ export function parseCommand(text: string, managers: string[]): Command | null {
       ? { kind: "alert", symbol: m[1].toUpperCase(), op: m[2] as ">" | "<", price: parseFloat(m[3]) }
       : { kind: "error", message: "Usage: ALERT AAPL > 350" };
   }
+  if (parts.length === 1 && ["HELP", "?", "ABOUT", "FAQ"].includes(head)) return { kind: "go", route: { kind: "page", page: "settings", params: ["help"] } };
   if (parts.length === 1 && PAGES[head]) return { kind: "go", route: { kind: "page", page: PAGES[head] } };
 
   const fn = parts.length > 1 ? parts[parts.length - 1].toUpperCase() : null;

@@ -64,3 +64,18 @@ Still open:
 - No HomePage unit test (jsdom `clientWidth` is 0 and gates the grid).
 - `useApi` starts a new request each interval even if the previous one is still in flight.
 - **Backend:** `/api/macro` returns `treasury_yield_curve: {}` live (2026-10-24) — yield curve unavailable in both UIs.
+
+## Added by plan 2b (2026-10-24)
+Resolved in 2b: options expiry leaking across symbols, insider row-key collisions, chart theme race, "retrying" text on
+non-polling panels, financials CSV end_date.
+Still open:
+- Chart: a range change disposes/re-creates the chart (drawings lost, brief flash); range never saved to
+  `settings.chartRange`; default indicators are `["MA"]` (classic showed MA + VOL + MACD).
+- Overview: studies/range-change always use the 6mo range; absolute 1-day change not shown; Quote/Studies blank while
+  the quote loads; Chart tab issues a duplicate `/api/security` at 6mo (header + chart).
+- Options: expiry dropdown unmounts while a new chain loads (useApi clears data on key change).
+- Financials `money()` uses a loose `keyof` cast. FinancialsTab test overwrites `URL.createObjectURL` without restoring.
+- Tests missing: memo TTL expiry, ORB badge branch, populated holders table, options expiry change.
+- Backend: a cold `/api/holders` (OwlChips fires it on every stock visit) holds `edgar_lock` and queues events/insiders/
+  filings behind it on first visit — CLAUDE.md Next-features item 4.
+- CLAUDE.md KLineChart gotcha line reads awkwardly after the 2b edit.

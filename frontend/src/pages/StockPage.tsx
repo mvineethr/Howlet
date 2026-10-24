@@ -8,6 +8,7 @@ import OwlChips from "../components/OwlChips";
 import OverviewTab from "./stock/OverviewTab";
 import ChartTab from "./stock/ChartTab";
 import FinancialsTab from "./stock/FinancialsTab";
+import HoldersTab from "./stock/HoldersTab";
 import NewsTab from "./stock/NewsTab";
 import PlaceholderPage from "./PlaceholderPage";
 
@@ -38,6 +39,8 @@ export default function StockPage({ symbol, tab }: { symbol: string; tab: StockT
         <ChartTab symbol={symbol} />
       ) : tab === "financials" ? (
         <FinancialsTab symbol={symbol} />
+      ) : tab === "holders" ? (
+        <HoldersTab symbol={symbol} />
       ) : tab === "news" ? (
         <NewsTab symbol={symbol} />
       ) : (

@@ -3,7 +3,8 @@ import { useState } from "react";
 import { readJson, writeJson } from "../lib/storage";
 import StocksTab from "./markets/StocksTab";
 import CryptoTab from "./markets/CryptoTab";
-import PlaceholderPage from "./PlaceholderPage";
+import FxTab from "./markets/FxTab";
+import EconomyTab from "./markets/EconomyTab";
 
 export type MarketsTab = "stocks" | "crypto" | "fx" | "economy";
 const TABS: [MarketsTab, string][] = [["stocks", "Stocks"], ["crypto", "Crypto"], ["fx", "FX"], ["economy", "Economy"]];
@@ -28,8 +29,8 @@ export default function MarketsPage() {
       </TabList>
       {tab === "stocks" && <StocksTab />}
       {tab === "crypto" && <CryptoTab />}
-      {tab === "fx" && <PlaceholderPage title="FX" />}
-      {tab === "economy" && <PlaceholderPage title="Economy" />}
+      {tab === "fx" && <FxTab />}
+      {tab === "economy" && <EconomyTab />}
     </div>
   );
 }

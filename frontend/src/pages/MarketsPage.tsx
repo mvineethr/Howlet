@@ -14,9 +14,9 @@ const isTab = (v: unknown): v is MarketsTab => TABS.some(([t]) => t === v);
 export function initialMarketsTab(): MarketsTab {
   const saved = readJson<MarketsTab | null>(MARKETS_TAB_KEY, null, (v): v is MarketsTab => isTab(v));
   if (saved) return saved;
-  let classic: string | null = null;
-  try { classic = localStorage.getItem("howlet_mkts_mode"); } catch { /* storage blocked */ }
-  return classic === "crypto" ? "crypto" : "stocks";
+  let legacy: string | null = null;
+  try { legacy = localStorage.getItem("howlet_mkts_mode"); } catch { /* storage blocked */ }
+  return legacy === "crypto" ? "crypto" : "stocks";
 }
 
 export default function MarketsPage() {

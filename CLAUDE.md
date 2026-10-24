@@ -114,8 +114,10 @@ doc. Tests: `pytest tests/` - all offline/mocked.
   hand-built fixture both had the same bug once (tests green, live {}).
 - **XBRL 10-Ks tag quarterly comparatives too** - filter duration
   entries to >=300-day spans or Q4 values masquerade as annual.
-- **KLineChart is vendored** at `static/klinecharts.min.js` (+ LICENSE; leftover from the retired classic UI, no longer used) and the React app installs it from npm (pinned 9.8.12) - no CDN at runtime. (When it was
-  CDN-loaded: the path is `dist/umd/...`; plain `dist/` 404s silently.)
+- **KLineChart comes from npm** (pinned 9.8.12), loaded as a lazy chunk
+  and bundled into `static/app` - no CDN at runtime, no vendored copy. Its
+  theme is read from the CSS variables. (When it was CDN-loaded: the path
+  is `dist/umd/...`; plain `dist/` 404s silently.)
 - **SEC resets stale keep-alive connections** on long-lived sessions
   (WinError 10054) - `_get` retries ConnectionError like a 5xx, and the
   Flask app maps every `requests.RequestException` to a JSON 502 (an
@@ -154,8 +156,8 @@ doc. Tests: `pytest tests/` - all offline/mocked.
   workaround; `pip install -e .` from the real root is the fix. Also why
   `.claude/launch.json` now sets `PYTHONPATH: src`.
 - **KLineChart's theme is a SECOND copy of the palette, in JS.** Its
-  styles come from a JS API, so CSS-token work cannot reach it; it must
-  read `tokens.ts`. Grep the JavaScript for hex literals before changing
+  styles come from a JS API, so CSS-token work cannot reach it; it reads
+  the CSS variables. Grep the JavaScript for hex literals before changing
   any colour.
   (Historical, classic UI: unstyled form controls silently fell back to the
   UA 13.33px font, and `prefers-reduced-motion` had to reset `#tape`'s
@@ -178,8 +180,9 @@ All working and verified live. The React app (`frontend/`, built into `static/ap
 history, insider-buy screening, 13F filing alerts (topbar bell, 30-min
 poll), EDGAR full-text search, company filings feed, N-PORT fund
 holdings (ARKK verified; UITs like SPY correctly error), FX cross-rate
-matrix, crypto top-20, `howlet warm`, CSV
-export. **MCP: 27 tools.** Presets: **14 managers** (Buffett, Burry,
+matrix, crypto top-20, `howlet warm`, CSV exports (screener, manager
+portfolio/changes, consensus, financials, fund holdings), and an export/import
+state backup (Settings -> Layouts & backup, `howlet-backup-<date>.json`). **MCP: 27 tools.** Presets: **14 managers** (Buffett, Burry,
 Ackman, Icahn, Tepper, Klarman, Loeb, Dalio, Druckenmiller, Marks,
 Li Lu, Einhorn/DME, Fundsmith, Tiger Global), every CIK verified live
 against a current 13F-HR. CI (ruff + pytest, 6 legs) and Docker.

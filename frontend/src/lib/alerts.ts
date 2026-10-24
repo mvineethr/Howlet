@@ -1,7 +1,7 @@
 import { readJson, writeJson } from "./storage";
 
 export type PriceAlert = { id: string; sym: string; op: ">" | "<"; px: number; fired: { price: number; at: string } | null };
-const KEY = "howlet_price_alerts_v1"; // shared with the classic page
+const KEY = "howlet_price_alerts_v1"; // legacy key, same shape
 
 export const getAlerts = (): PriceAlert[] => readJson<PriceAlert[]>(KEY, [], (v): v is PriceAlert[] => Array.isArray(v));
 export const saveAlerts = (a: PriceAlert[]) => writeJson(KEY, a);

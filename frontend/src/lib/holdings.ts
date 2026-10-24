@@ -1,7 +1,7 @@
 import { readJson, writeJson } from "./storage";
 
 export type Holding = { symbol: string; shares: number };
-export const HOLDINGS_KEY = "howlet_pf_holdings"; // classic shape [{symbol, shares}]
+export const HOLDINGS_KEY = "howlet_pf_holdings"; // legacy shape [{symbol, shares}]
 
 const ok = (h: unknown): h is Holding =>
   !!h && typeof h === "object" && typeof (h as Holding).symbol === "string" &&

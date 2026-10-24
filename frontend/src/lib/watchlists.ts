@@ -1,7 +1,7 @@
 import { writeJson } from "./storage";
 
 export type Watchlists = Record<string, string[]>;
-export const WATCHLISTS_KEY = "howlet_watchlists_v1"; // shared with the classic page; same shape
+export const WATCHLISTS_KEY = "howlet_watchlists_v1"; // legacy key, same shape
 
 export function addSymbol(all: Watchlists, list: string, raw: string): Watchlists {
   const sym = raw.trim().toUpperCase();

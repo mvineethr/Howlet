@@ -1,14 +1,14 @@
 import { readJson, writeJson } from "./storage";
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
-const CLASSIC_DEFAULT_WL = ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA", "^GSPC", "BTC-USD"];
+const DEFAULT_WATCHLIST = ["AAPL", "MSFT", "NVDA", "AMZN", "TSLA", "^GSPC", "BTC-USD"];
 
 export function getWatchlists(): Record<string, string[]> {
   const named = readJson<Record<string, string[]> | null>("howlet_watchlists_v1", null,
     (v): v is Record<string, string[]> => isObj(v));
   if (named && Object.keys(named).length) return named;
   const legacy = readJson<string[]>("howlet_watchlist", [], (v): v is string[] => Array.isArray(v));
-  return { default: legacy.length ? legacy : CLASSIC_DEFAULT_WL };
+  return { default: legacy.length ? legacy : DEFAULT_WATCHLIST };
 }
 
 export type LegacyWidget = { id: string; type: string; config: Record<string, string>; wide?: boolean; tall?: boolean };
@@ -16,7 +16,7 @@ export type HomeBlock = { i: string; type: string; config: Record<string, string
 export type HomeTab = { id: string; name: string; blocks: HomeBlock[] };
 export type HomeState = { tabs: HomeTab[]; active: string };
 export const HOME_KEY = "howlet_home_v1";
-const ALWAYS_WIDE = new Set(["world-markets"]); // classic WIDGETS def.wide
+const ALWAYS_WIDE = new Set(["world-markets"]); // legacy widget def: always wide
 
 export function migrateLayout(legacy: unknown): HomeState | null {
   if (!isObj(legacy) || !Array.isArray(legacy.tabs)) return null;

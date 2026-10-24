@@ -7,9 +7,9 @@ import { readJson, writeJson } from "../lib/storage";
 import { useSettings } from "../lib/settings";
 import { useRoute } from "../lib/route";
 
-const SEEN_KEY = "howlet_seen_filings_v1"; // shared with the classic page
+const SEEN_KEY = "howlet_seen_filings_v1"; // legacy key, same shape
 const isRecord = (v: unknown): v is Record<string, string> => !!v && typeof v === "object" && !Array.isArray(v);
-const notified = new Set<string>(); // per session, like classic
+const notified = new Set<string>(); // per session, as before
 const chime = () => {
   try { // 150 ms 880 Hz tone: no audio asset to ship
     const ctx = new AudioContext(), osc = ctx.createOscillator(), gain = ctx.createGain();

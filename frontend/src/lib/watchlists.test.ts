@@ -24,7 +24,7 @@ test("create and delete lists", () => {
   expect(deleteList(two, "default")).toBe(two);
 });
 
-test("save writes the classic shape", () => {
+test("save writes the legacy shape", () => {
   saveWatchlists({ default: ["AAPL"] });
   expect(JSON.parse(localStorage.getItem(WATCHLISTS_KEY)!)).toEqual({ default: ["AAPL"] });
 });

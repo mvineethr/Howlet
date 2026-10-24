@@ -2,7 +2,7 @@ import { initialMarketsTab, MARKETS_TAB_KEY } from "./MarketsPage";
 
 beforeEach(() => localStorage.clear());
 
-test("new key wins; otherwise classic mode maps; never writes the classic key", () => {
+test("new key wins; otherwise legacy mode maps; never writes the legacy key", () => {
   expect(initialMarketsTab()).toBe("stocks");
   localStorage.setItem("howlet_mkts_mode", "crypto");
   expect(initialMarketsTab()).toBe("crypto");

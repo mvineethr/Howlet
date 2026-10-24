@@ -16,7 +16,7 @@ test("fires only crossed, unfired alerts with a known price", () => {
   expect(fired[0].fired).toEqual({ price: 101, at: "2026-10-23T00:00:00Z" });
 });
 
-test("add and remove persist in the classic page's key", () => {
+test("add and remove persist in the howlet_price_alerts_v1 key", () => {
   addPriceAlert("tsla", "<", 200);
   const [x] = getAlerts();
   expect(x).toMatchObject({ sym: "TSLA", op: "<", px: 200, fired: null });

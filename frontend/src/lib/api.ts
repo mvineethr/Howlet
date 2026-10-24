@@ -30,6 +30,24 @@ export type Security = Quote & { exchange?: string | null; instrument_type?: str
 
 export type FilingAlert = { label: string; cik: string; accession_number: string; filing_date: string; period_of_report: string | null };
 
+export type MarketRow = { symbol: string; label: string; price: number; change_pct: number | null; sparkline: number[] };
+export type MarketSection = { section: string; rows: MarketRow[] };
+export type CryptoRow = { rank: number; symbol: string; name: string; price: number; change_pct_24h: number | null;
+  market_cap: number | null; volume_24h: number | null; high_24h: number | null; low_24h: number | null };
+export type CryptoResult = { source: string; rows: CryptoRow[] };
+export type FxResult = { date?: string; currencies?: string[]; matrix?: Record<string, Record<string, number>> };
+export type BlsPoint = { value: string; period: string; year: string };
+export type MacroResult = {
+  treasury_yield_curve: { date?: string; curve?: { maturity: string; yield_pct: number }[] } | null;
+  bls_series: Record<string, BlsPoint[]> | null;
+  fred_available: boolean;
+  fred_series: Record<string, { description: string; latest: number | string | null; date: string | null }> | null;
+};
+export type RegDoc = { title: string; type: string | null; document_number: string; html_url: string; publication_date: string | null };
+export type ScreenerRow = { symbol: string; price: number | null; change_pct: number | null; market_cap: number | null;
+  pe_ratio: number | null; eps_diluted: number | null; revenue: number | null; revenue_growth_pct: number | null; net_margin_pct: number | null };
+export type ScreenerResult = { universe_size: number; matched: number; rows: ScreenerRow[] };
+
 const q = encodeURIComponent;
 export const api = {
   quotes: (symbols: string[]) => getJson<Quote[]>(`/api/quotes?symbols=${q(symbols.slice(0, 30).join(","))}`),
@@ -40,4 +58,11 @@ export const api = {
   managers: () => getJson<ManagerRef[]>("/api/managers"),
   filingAlerts: () => getJson<FilingAlert[]>("/api/filing-alerts"),
   security: (symbol: string) => getJson<Security>(`/api/security/${q(symbol)}`),
+  markets: () => getJson<MarketSection[]>("/api/markets"),
+  crypto: (limit = 50) => getJson<CryptoResult>(`/api/crypto?limit=${limit}`),
+  fx: () => getJson<FxResult>("/api/fx"),
+  macro: () => getJson<MacroResult>("/api/macro"),
+  fedEvents: (limit = 15) => getJson<NewsItem[]>(`/api/fed-events?limit=${limit}`),
+  regulatory: (limit = 15) => getJson<RegDoc[]>(`/api/regulatory?limit=${limit}`),
+  screener: (qs: string) => getJson<ScreenerResult>(`/api/screener?${qs}`),
 };

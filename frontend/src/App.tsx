@@ -15,9 +15,11 @@ import NewsPage from "./pages/NewsPage";
 import MarketsPage from "./pages/MarketsPage";
 import SmartMoneyPage from "./pages/SmartMoneyPage";
 import ScreenerPage from "./pages/ScreenerPage";
+import PortfolioPage from "./pages/PortfolioPage";
 
 const PAGES: Partial<Record<PageId, (params: string[]) => JSX.Element>> = {
   smart: (params) => <SmartMoneyPage params={params} />,
+  portfolio: (params) => <PortfolioPage params={params} />,
   home: () => <HomePage />, markets: () => <MarketsPage />, news: () => <NewsPage />,
   screener: () => <ScreenerPage />, settings: () => <SettingsPage />,
 };

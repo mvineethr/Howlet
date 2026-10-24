@@ -13,9 +13,11 @@ import HomePage from "./pages/HomePage";
 import SettingsPage from "./pages/SettingsPage";
 import NewsPage from "./pages/NewsPage";
 import MarketsPage from "./pages/MarketsPage";
+import SmartMoneyPage from "./pages/SmartMoneyPage";
 import ScreenerPage from "./pages/ScreenerPage";
 
-const PAGES: Partial<Record<PageId, () => JSX.Element>> = {
+const PAGES: Partial<Record<PageId, (params: string[]) => JSX.Element>> = {
+  smart: (params) => <SmartMoneyPage params={params} />,
   home: () => <HomePage />, markets: () => <MarketsPage />, news: () => <NewsPage />,
   screener: () => <ScreenerPage />, settings: () => <SettingsPage />,
 };
@@ -52,7 +54,7 @@ export default function App() {
 
   const page = route.kind === "stock"
     ? <StockPage symbol={route.symbol} tab={route.tab} />
-    : (PAGES[route.page]?.() ?? <PlaceholderPage title={PAGE_META[route.page].label} />);
+    : (PAGES[route.page]?.(route.params ?? []) ?? <PlaceholderPage title={PAGE_META[route.page].label} />);
 
   return (
     <FluentProvider theme={theme} style={{ height: "100vh", display: "flex", flexDirection: "column", fontSize: TEXT_SCALE[settings.textSize] }}

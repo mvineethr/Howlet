@@ -32,7 +32,7 @@ export default function CommandBox() {
     const cmd = parseCommand(text, (managers ?? []).map((m) => m.label));
     if (!cmd) return;
     if (cmd.kind === "go") go(cmd.route);
-    else if (cmd.kind === "manager") location.href = `/classic?cmd=${encodeURIComponent(cmd.id + " PORT")}`;
+    else if (cmd.kind === "manager") go({ kind: "page", page: "smart", params: ["managers", cmd.id] });
     else if (cmd.kind === "alert") { addPriceAlert(cmd.symbol, cmd.op, cmd.price); setMsg(`Alert set: ${cmd.symbol} ${cmd.op} ${cmd.price}`); }
     else { setMsg(cmd.message); return; }
     if (cmd.kind !== "alert") setMsg("");

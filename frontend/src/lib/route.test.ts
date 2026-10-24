@@ -1,4 +1,4 @@
-import { formatRoute, parseHash, visibleRail } from "./route";
+import { formatRoute, parseHash, visibleRail, type Route } from "./route";
 import { DEFAULT_SETTINGS } from "./settings";
 
 test("parses pages, stocks and junk", () => {
@@ -24,4 +24,13 @@ test("visibleRail respects order and hidden pages", () => {
 
 test("malformed percent-encoding does not throw", () => {
   expect(parseHash("#/stock/100%", "home")).toEqual({ kind: "stock", symbol: "100%", tab: "overview" });
+});
+
+test("page params round-trip and are omitted when absent", () => {
+  expect(parseHash("#/smart/managers/buffett", "home")).toEqual({ kind: "page", page: "smart", params: ["managers", "buffett"] });
+  expect(parseHash("#/smart", "home")).toEqual({ kind: "page", page: "smart" });
+  expect(parseHash("#/nope/x", "home")).toEqual({ kind: "page", page: "home" });
+  const r: Route = { kind: "page", page: "smart", params: ["history", "BRK B"] };
+  expect(formatRoute(r)).toBe("#/smart/history/BRK%20B");
+  expect(parseHash(formatRoute(r), "home")).toEqual(r);
 });

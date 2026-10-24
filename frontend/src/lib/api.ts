@@ -13,6 +13,41 @@ export async function getJson<T>(path: string): Promise<T> {
   return body as T;
 }
 
+export async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  let data: unknown = null;
+  try { data = await res.json(); } catch { /* non-JSON body */ }
+  if (!res.ok) {
+    const msg = data && typeof data === "object" && "error" in data ? String((data as { error: unknown }).error) : `HTTP ${res.status}`;
+    throw new ApiError(msg, res.status);
+  }
+  return data as T;
+}
+export type PortfolioPosition = { issuer: string; cusip: string; value_usd: number; shares: number; share_type: string;
+  weight_pct: number; ticker: string | null; price: number | null; change_pct: number | null; currency: string | null; sparkline: number[] };
+export type Portfolio = { identifier: string; cik: string; period_of_report: string | null; filing_date: string | null;
+  accession_number: string; total_value_usd: number; position_count: number; positions: PortfolioPosition[] };
+export type ConsensusRow = { issuer: string; cusip: string; manager_count: number; total_value_usd: number;
+  combined_weight_pct: number; weights_pct: Record<string, number> };
+export type Consensus = { managers: { label: string; period_of_report: string | null }[]; rows: ConsensusRow[] };
+export type InsiderBuy = { symbol: string; insider: string; relationship: string | null; date: string | null; shares: number | null;
+  price_per_share: number | null; value_usd: number | null; shares_owned_after: number | null; filing_date: string; accession_number: string };
+export type InsiderBuys = { symbols_scanned: string[]; filings_per_symbol: number;
+  summary: { symbol: string; buy_count: number; total_shares: number; total_value_usd: number; latest_date: string | null }[];
+  buys: InsiderBuy[] };
+export type PositionQuarter = { period_of_report: string | null; filing_date: string | null; shares: number; value_usd: number; weight_pct: number; held: boolean };
+export type PositionHistory = { identifier: string; cik: string; query: string; issuer: string; cusips: string[]; quarters: PositionQuarter[] };
+export type FullTextHit = { accession_number: string; cik: string; company: string; file_date: string; file_description: string | null;
+  file_type: string | null; form: string; root_form?: string; url: string };
+export type FullText = { query: string; forms: string[]; results: FullTextHit[] };
+export type FundHolding = { name: string; title: string | null; cusip: string | null; balance: number | null; value_usd: number | null;
+  pct_val: number | null; asset_cat: string | null; issuer_cat: string | null; country: string | null };
+export type Fund = { symbol: string; registrant?: string | null; fund: string; series_id?: string; report_period_date: string | null;
+  total_assets: number | null; net_assets: number | null; accession_number: string; position_count: number; holdings: FundHolding[] };
+export type RiskPosition = { symbol: string; weight_pct: number; return_pct: number; annualized_volatility_pct: number; max_drawdown_pct: number };
+export type Risk = { portfolio_return_pct?: number; portfolio_annualized_volatility_pct?: number; portfolio_max_drawdown_pct?: number;
+  sharpe_ratio?: number | null; positions: RiskPosition[]; error?: string };
+
 export type Quote = {
   symbol: string; name: string | null; price: number; change: number | null;
   change_pct: number | null; previous_close: number | null; currency: string | null;
@@ -113,4 +148,12 @@ export const api = {
   fedEvents: (limit = 15) => getJson<NewsItem[]>(`/api/fed-events?limit=${limit}`),
   regulatory: (limit = 15) => getJson<RegDoc[]>(`/api/regulatory?limit=${limit}`),
   screener: (qs: string) => getJson<ScreenerResult>(`/api/screener?${qs}`),
+  portfolio: (id: string, top = 25) => getJson<Portfolio>(`/api/portfolio/${q(id)}?top=${top}`),
+  consensus: (min = 2, limit = 25) => getJson<Consensus>(`/api/consensus?min=${min}&limit=${limit}`),
+  insiderBuys: (symbols: string[], filings = 8) => getJson<InsiderBuys>(`/api/insider-buys?filings=${filings}&symbols=${q(symbols.join(","))}`),
+  positionHistory: (id: string, query: string, quarters = 8) => getJson<PositionHistory>(`/api/position-history/${q(id)}/${q(query)}?quarters=${quarters}`),
+  fulltext: (query: string, forms: string[] = [], limit = 25) =>
+    getJson<FullText>(`/api/fulltext?q=${q(query)}&limit=${limit}${forms.length ? `&forms=${q(forms.join(","))}` : ""}`),
+  fund: (symbol: string, top = 50) => getJson<Fund>(`/api/fund/${q(symbol)}?top=${top}`),
+  risk: (holdings: { symbol: string; shares: number }[], range = "1y") => postJson<Risk>("/api/risk", { holdings, range }),
 };

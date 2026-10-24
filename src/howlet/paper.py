@@ -10,6 +10,7 @@ no network I/O except through the `prices` object passed in.
 
 from __future__ import annotations
 
+import math
 import re
 import threading
 import uuid
@@ -140,8 +141,8 @@ def new_state(start_cash, now: datetime) -> dict:
         start_cash = float(start_cash)
     except (TypeError, ValueError):
         raise PaperError("Starting cash must be a number.") from None
-    if not start_cash > 0:
-        raise PaperError("Starting cash must be more than zero.")
+    if not (math.isfinite(start_cash) and start_cash > 0):
+        raise PaperError("Starting cash must be a finite number more than zero.")
     return {
         "version": 1,
         "account": {"id": uuid.uuid4().hex, "created": _iso(now), "start_cash": start_cash},
@@ -259,10 +260,17 @@ def _scan(order: dict, bars: list[Bar], now: datetime):
     later = [b for b in bars if datetime.fromtimestamp(b.ts, timezone.utc) > placed]
     if order["tif"] == "gtc":
         deadline, why = placed + timedelta(days=GTC_DAYS), f"Good-'til-cancelled order expired after {GTC_DAYS} days."
-    elif later:  # a day order lives through the first session that has a bar after it
-        deadline, why = _close_utc(ny_from_unix(later[0].ts).date()), "Day order expired at the close."
     else:
-        deadline, why = None, None
+        # Placed in a session: dies at that session's close, even if its last bar began before the order.
+        # Placed outside hours: lives through the first session that has a bar after it.
+        placed_day = to_ny(placed).date()
+        if in_session_hours(placed) and any(ny_from_unix(b.ts).date() == placed_day for b in bars):
+            day = placed_day
+        elif later:
+            day = ny_from_unix(later[0].ts).date()
+        else:
+            day = None
+        deadline, why = (_close_utc(day), "Day order expired at the close.") if day else (None, None)
     for b in later:
         when = datetime.fromtimestamp(b.ts, timezone.utc)
         if deadline and when >= deadline:

@@ -187,6 +187,25 @@ def test_day_order_placed_after_hours_waits_for_the_next_session():
     assert order["status"] == "open"
 
 
+def test_day_order_placed_late_in_session_expires_at_that_close():
+    # 15:57 NY; the 15:55 bar began before the order, so Monday's bar is the only later one.
+    prices = FakePrices({"AAPL": q("AAPL", 120.0)}, bars={"AAPL": [bar(at(23, 19, 55), 120, 121, 119),
+                                                                   bar(at(26, 13, 30), 90, 91, 89)]})
+    state, order = paper.place_order(account(), prices, at(23, 19, 57), "AAPL", "buy", 1, "limit", limit=100)
+    paper.settle(state, prices, at(26, 14))
+    assert order["status"] == "expired"
+    assert order["closed_at"] == paper._iso(at(23, 20))
+
+
+def test_day_order_placed_on_a_holiday_session_lives_through_the_next_session():
+    # No bars at all on Friday (holiday): the order waits for Monday's session.
+    prices = FakePrices({"AAPL": q("AAPL", 120.0)}, bars={"AAPL": [bar(at(26, 13, 30), 120, 121, 119)]})
+    state, order = paper.place_order(account(), prices, at(23, 14), "AAPL", "buy", 1, "limit", limit=100)
+    paper.settle(state, prices, at(26, 21))
+    assert order["status"] == "expired"
+    assert order["closed_at"] == paper._iso(at(26, 20))
+
+
 def test_gtc_expires_after_90_days():
     prices = FakePrices({"AAPL": q("AAPL", 120.0)}, bars={"AAPL": [bar(at(23, 14, 5), 120, 121, 119)]})
     state, order = paper.place_order(account(), prices, FRI, "AAPL", "buy", 1, "limit", limit=100, tif="gtc")
@@ -233,3 +252,9 @@ def test_reset_archives_the_old_account():
     assert fresh["archive"][0]["orders"] == state["orders"] and fresh["archive"][0]["reset_at"] == paper._iso(SAT)
     with pytest.raises(PaperError):
         paper.reset(None, 0, SAT)
+
+
+@pytest.mark.parametrize("cash", [float("inf"), float("nan"), -5, 0])
+def test_reset_rejects_non_finite_or_non_positive_cash(cash):
+    with pytest.raises(PaperError):
+        paper.reset(None, cash, SAT)

@@ -11,7 +11,6 @@ import FinancialsTab from "./stock/FinancialsTab";
 import HoldersTab from "./stock/HoldersTab";
 import NewsTab from "./stock/NewsTab";
 import OptionsTab from "./stock/OptionsTab";
-import PlaceholderPage from "./PlaceholderPage";
 
 const TABS: [StockTab, string][] = [["overview", "Overview"], ["chart", "Chart"], ["financials", "Financials"], ["holders", "Holders"], ["news", "News"], ["options", "Options"]];
 
@@ -47,7 +46,7 @@ export default function StockPage({ symbol, tab }: { symbol: string; tab: StockT
       ) : tab === "options" ? (
         <OptionsTab symbol={symbol} />
       ) : (
-        <PlaceholderPage title={TABS.find(([t]) => t === tab)?.[1] ?? tab} />
+        <OptionsTab symbol={symbol} />
       )}
     </div>
   );

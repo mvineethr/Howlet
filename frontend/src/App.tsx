@@ -1,7 +1,7 @@
 import { FluentProvider } from "@fluentui/react-components";
 import { useEffect, useMemo, useState } from "react";
 import { buildTheme, resolveMode, applyCssVars } from "./theme/theme";
-import { useSettings } from "./lib/settings";
+import { useSettings, type PageId } from "./lib/settings";
 import { useRoute, visibleRail } from "./lib/route";
 import Rail, { PAGE_META } from "./shell/Rail";
 import TopBar from "./shell/TopBar";
@@ -14,6 +14,11 @@ import SettingsPage from "./pages/SettingsPage";
 import NewsPage from "./pages/NewsPage";
 import MarketsPage from "./pages/MarketsPage";
 import ScreenerPage from "./pages/ScreenerPage";
+
+const PAGES: Partial<Record<PageId, () => JSX.Element>> = {
+  home: () => <HomePage />, markets: () => <MarketsPage />, news: () => <NewsPage />,
+  screener: () => <ScreenerPage />, settings: () => <SettingsPage />,
+};
 
 const prefersDark = () => window.matchMedia("(prefers-color-scheme: dark)").matches;
 const TEXT_SCALE = { small: "13px", medium: "14px", large: "16px" } as const;
@@ -47,7 +52,7 @@ export default function App() {
 
   const page = route.kind === "stock"
     ? <StockPage symbol={route.symbol} tab={route.tab} />
-    : route.page === "home" ? <HomePage /> : route.page === "settings" ? <SettingsPage /> : route.page === "news" ? <NewsPage /> : route.page === "markets" ? <MarketsPage /> : route.page === "screener" ? <ScreenerPage /> : <PlaceholderPage title={PAGE_META[route.page].label} />;
+    : (PAGES[route.page]?.() ?? <PlaceholderPage title={PAGE_META[route.page].label} />);
 
   return (
     <FluentProvider theme={theme} style={{ height: "100vh", display: "flex", flexDirection: "column", fontSize: TEXT_SCALE[settings.textSize] }}

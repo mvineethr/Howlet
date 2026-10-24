@@ -117,7 +117,7 @@ doc. Tests: `pytest tests/` - all offline/mocked.
   hand-built fixture both had the same bug once (tests green, live {}).
 - **XBRL 10-Ks tag quarterly comparatives too** - filter duration
   entries to >=300-day spans or Q4 values masquerade as annual.
-- **KLineChart is vendored** at `static/klinecharts.min.js` (+ LICENSE),
+- **KLineChart is vendored** at `static/klinecharts.min.js` (+ LICENSE) for `/classic`, and installed from npm (pinned 9.8.12) for the React app,
   served by Flask's default `/static/` - no CDN at runtime. (When it was
   CDN-loaded: the path is `dist/umd/...`; plain `dist/` 404s silently.)
 - **SEC resets stale keep-alive connections** on long-lived sessions
@@ -217,7 +217,7 @@ treatment, first-ever `:focus-visible` styles, a motion layer with a
 (it asserted liveness it could not know). Chart theme now reads `:root`.
 168/102 line diff, tests still green, verified live in the browser.
 
-React shell live at `/` (2026-10-23): rail, Ctrl+K, settings, Home grid, stock overview + owl chips, alerts bell; News, Markets (stocks/crypto/FX/economy) and Screener pages (2026-10-24); other pages still in `/classic`.
+React shell live at `/` (2026-10-23): rail, Ctrl+K, settings, Home grid, stock overview + owl chips, alerts bell; News, Markets (stocks/crypto/FX/economy) and Screener pages (2026-10-24); stock page tabs: overview/events/studies/ORB, KLineChart chart, financials, holders/insiders/filings, news, options (2026-10-24); other pages still in `/classic`.
 
 Known-untested: FRED with a real key; pre-2013 SGML filings (should
 error clearly, never exercised).

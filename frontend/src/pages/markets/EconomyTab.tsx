@@ -1,11 +1,11 @@
 import { useApi } from "../../lib/useApi";
 import { api, type NewsItem, type RegDoc } from "../../lib/api";
-import { fmtNum } from "../../lib/fmt";
 import Block from "../../blocks/Block";
 import DataTable from "../../components/DataTable";
 import NewsList from "../../components/NewsList";
+import { FedPanel, YieldCurvePanel } from "./panels";
 
-const HOUR = 3_600_000, FIVE_MIN = 300_000;
+const HOUR = 3_600_000;
 const BLS_LABELS: [string, string][] = [["cpi", "CPI (all items)"], ["unemployment_rate", "Unemployment rate"], ["nonfarm_payrolls", "Nonfarm payrolls"]];
 
 export const regToNews = (d: RegDoc): NewsItem => ({
@@ -16,28 +16,15 @@ export const regToNews = (d: RegDoc): NewsItem => ({
 
 export default function EconomyTab() {
   const macro = useApi("macro", api.macro, HOUR);
-  const fed = useApi("fed:20", () => api.fedEvents(20), FIVE_MIN);
   const reg = useApi("reg:15", () => api.regulatory(15), HOUR);
   const m = macro.data;
-  const curve = m?.treasury_yield_curve?.curve ?? [];
   const bls = BLS_LABELS.map(([k, label]) => ({ k, label, p: m?.bls_series?.[k]?.[0] })).filter((r) => r.p);
   const fred = Object.entries(m?.fred_series ?? {});
   const box = { height: "calc((100vh - 170px) / 2)" };
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(380px, 1fr))", gap: 12 }}>
-      <div style={box}>
-        <Block fixed title={`Treasury yield curve${m?.treasury_yield_curve?.date ? ` · ${m.treasury_yield_curve.date}` : ""}`}
-          loading={macro.loading} error={macro.error} fetchedAt={macro.fetchedAt} refreshMs={HOUR}>
-          {!m && !macro.error && <span style={{ color: "var(--dim)" }}>Loading macro (Treasury, BLS, FRED)…</span>}
-          {m && (curve.length ? (
-            <DataTable columns={[
-              { key: "m", label: "Maturity", render: (r) => r.maturity },
-              { key: "y", label: "Yield", align: "right", render: (r) => <span className="num">{fmtNum(r.yield_pct)}%</span> },
-            ]} rows={curve} rowKey={(r) => r.maturity} empty="Yield curve unavailable right now." />
-          ) : <span style={{ color: "var(--dim)" }}>Yield curve unavailable right now.</span>)}
-        </Block>
-      </div>
+      <div style={box}><YieldCurvePanel /></div>
       <div style={box}>
         <Block fixed title="Jobs & inflation" loading={macro.loading} error={macro.error} fetchedAt={macro.fetchedAt} refreshMs={HOUR}>
           {!m && !macro.error && <span style={{ color: "var(--dim)" }}>Loading macro (Treasury, BLS, FRED)…</span>}
@@ -69,11 +56,7 @@ export default function EconomyTab() {
           )}
         </Block>
       </div>
-      <div style={box}>
-        <Block fixed title="Fed calendar" loading={fed.loading} error={fed.error} fetchedAt={fed.fetchedAt} refreshMs={FIVE_MIN}>
-          {fed.data && <NewsList items={fed.data} empty="No Fed items right now." />}
-        </Block>
-      </div>
+      <div style={box}><FedPanel /></div>
       <div style={box}>
         <Block fixed title="SEC rulemaking" loading={reg.loading} error={reg.error} fetchedAt={reg.fetchedAt} refreshMs={HOUR}>
           {reg.data && <NewsList items={reg.data.map(regToNews)} empty="Federal Register unavailable right now." />}

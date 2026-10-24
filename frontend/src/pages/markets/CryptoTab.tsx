@@ -18,11 +18,11 @@ const COLS: Column<CryptoRow>[] = [
   { key: "range", label: "24h low / high", align: "right", render: (r) => <span className="num">{r.low_24h == null ? "—" : `${px(r.low_24h)} / ${px(r.high_24h)}`}</span> },
 ];
 
-export default function CryptoTab() {
+export default function CryptoTab({ limit = 50, onRemove }: { limit?: number; onRemove?: () => void }) {
   const refreshMs = REFRESH_MS[useSettings((s) => s.settings.refresh)];
-  const { data, error, loading, fetchedAt } = useApi("crypto:50", () => api.crypto(50), refreshMs);
+  const { data, error, loading, fetchedAt } = useApi(`crypto:${limit}`, () => api.crypto(limit), refreshMs);
   return (
-    <Block fixed title={`Crypto · top ${data?.rows.length ?? 50} by market cap · 24h`} loading={loading} error={error}
+    <Block fixed={!onRemove} onRemove={onRemove} title={`Crypto · top ${data?.rows.length ?? limit} by market cap · 24h`} loading={loading} error={error}
       fetchedAt={fetchedAt} refreshMs={refreshMs} actions={data?.source ? <Caption1 style={{ color: "var(--dim)" }}>source: {data.source}</Caption1> : undefined}>
       {data && <DataTable columns={COLS} rows={data.rows} rowKey={(r) => String(r.rank)}
         empty="Crypto data unavailable right now (CoinGecko and Coinpaprika both unreachable)." />}

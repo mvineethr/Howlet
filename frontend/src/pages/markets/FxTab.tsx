@@ -5,11 +5,11 @@ import Block from "../../blocks/Block";
 
 const HOUR = 3_600_000;
 
-export default function FxTab() {
+export default function FxTab({ onRemove }: { onRemove?: () => void }) {
   const { data, error, loading, fetchedAt } = useApi("fx", api.fx, HOUR);
   const cur = data?.currencies ?? [];
   return (
-    <Block fixed title={`FX cross rates · ECB reference${data?.date ? `, ${data.date}` : ""} · row → column`}
+    <Block fixed={!onRemove} onRemove={onRemove} title={`FX cross rates · ECB reference${data?.date ? `, ${data.date}` : ""} · row → column`}
       loading={loading} error={error} fetchedAt={fetchedAt} refreshMs={HOUR}>
       {data && (!data.matrix ? (
         <span style={{ color: "var(--dim)" }}>FX rates unavailable right now (ECB/Frankfurter unreachable).</span>

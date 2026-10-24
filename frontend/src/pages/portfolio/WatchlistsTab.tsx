@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button, Dropdown, Input, Option } from "@fluentui/react-components";
 import { useApi } from "../../lib/useApi";
 import { api, type Events, type Quote } from "../../lib/api";
 import { getWatchlists } from "../../lib/legacy";
+import { useSequentialEvents } from "../../lib/events";
 import { REFRESH_MS, useSettings } from "../../lib/settings";
 import { fmtInt, fmtNum, signed, tone } from "../../lib/fmt";
 import { addSymbol, createList, deleteList, removeSymbol, saveWatchlists, type Watchlists } from "../../lib/watchlists";
@@ -15,9 +16,6 @@ import { stockSymbols } from "../smart/InsiderBuysTab";
 
 const FIVE_MIN = 300_000;
 const num = (s: string, color?: string) => <span className="num" style={color ? { color } : undefined}>{s}</span>;
-// Shared across mounts: events lookups hit throttled SEC proxy pages, so never refetch within a session.
-const eventsCache = new Map<string, Events | "error">();
-
 type QRow = { s: string; q: Quote | undefined };
 type EvRow = { s: string; e: Events | "error" };
 
@@ -29,32 +27,17 @@ export default function WatchlistsTab() {
   const [newName, setNewName] = useState("");
   const [err, setErr] = useState("");
   const [confirm, setConfirm] = useState(false);
-  const [, setTick] = useState(0);
 
   const symbols = all[list] ?? [];
   const stocks = stockSymbols(symbols);
   const evSyms = stocks.slice(0, 12);
-  const evKey = evSyms.join(",");
   const newsSyms = stocks.slice(0, 10);
   const commit = (next: Watchlists) => { setAll(next); saveWatchlists(next); };
 
   const quotes = useApi(symbols.length ? `pf-wl:${list}:${symbols.join(",")}` : null, () => api.quotes(symbols), refreshMs);
   const news = useApi(newsSyms.length ? `pf-news:${newsSyms.join(",")}` : null, () => api.newsFor(newsSyms, 40), FIVE_MIN);
 
-  // Sequential on purpose: each lookup can trigger throttled SEC requests.
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      for (const s of evKey ? evKey.split(",") : []) {
-        if (cancelled) break;
-        if (!eventsCache.has(s)) {
-          try { eventsCache.set(s, await api.events(s)); } catch { eventsCache.set(s, "error"); }
-        }
-        setTick((t) => t + 1);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [evKey]);
+  const events = useSequentialEvents(evSyms);
 
   const add = () => { commit(addSymbol(getWatchlists(), list, sym)); setSym(""); };
   const create = () => {
@@ -82,7 +65,7 @@ export default function WatchlistsTab() {
   ];
 
   const evRows: EvRow[] = [];
-  for (const s of evSyms) { const e = eventsCache.get(s); if (e) evRows.push({ s, e }); }
+  for (const s of evSyms) { const e = events.get(s); if (e) evRows.push({ s, e }); }
   const evCell = (r: EvRow, pick: (e: Events) => string) =>
     r.e === "error" ? <span style={{ color: "var(--dim)" }}>unavailable</span> : num(pick(r.e));
   const evCols: Column<EvRow>[] = [

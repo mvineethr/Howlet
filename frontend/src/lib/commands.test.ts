@@ -36,3 +36,7 @@ test("empty input is null", () => {
 test.each(["help", "?", "about", "FAQ"])("%s opens the help page", (c) => {
   expect(parseCommand(c, M)).toEqual({ kind: "go", route: { kind: "page", page: "settings", params: ["help"] } });
 });
+
+test("PAPER opens the Paper tab", () => {
+  expect(parseCommand("paper", [])).toEqual({ kind: "go", route: { kind: "page", page: "portfolio", params: ["paper"] } });
+});

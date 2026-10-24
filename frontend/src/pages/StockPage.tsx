@@ -1,4 +1,5 @@
-import { Body1, Tab, TabList, Title2 } from "@fluentui/react-components";
+import { useState } from "react";
+import { Body1, Button, Tab, TabList, Title2 } from "@fluentui/react-components";
 import { useApi } from "../lib/useApi";
 import { api, type SecurityDetail } from "../lib/api";
 import { useRoute, type StockTab } from "../lib/route";
@@ -11,6 +12,7 @@ import FinancialsTab from "./stock/FinancialsTab";
 import HoldersTab from "./stock/HoldersTab";
 import NewsTab from "./stock/NewsTab";
 import OptionsTab from "./stock/OptionsTab";
+import OrderTicket from "../components/OrderTicket";
 
 const TABS: [StockTab, string][] = [["overview", "Overview"], ["chart", "Chart"], ["financials", "Financials"], ["holders", "Holders"], ["news", "News"], ["options", "Options"]];
 
@@ -26,6 +28,7 @@ const BODY: Record<StockTab, (s: string, q: SecurityDetail | undefined) => JSX.E
 export default function StockPage({ symbol, tab }: { symbol: string; tab: StockTab }) {
   const { showOptions, refresh } = useSettings((s) => s.settings);
   const go = useRoute((r) => r.go);
+  const [ticket, setTicket] = useState(false);
   const { data: q, error } = useApi(`sec:${symbol}`, () => api.security(symbol), REFRESH_MS[refresh]);
   const tabs = TABS.filter(([t]) => t !== "options" || showOptions);
 
@@ -37,6 +40,8 @@ export default function StockPage({ symbol, tab }: { symbol: string; tab: StockT
         {q && <span style={{ fontSize: "1.6em" }}><Num value={q.price} /></span>}
         {q && <Num value={q.change_pct} pct />}
         {error && !q && <Body1 style={{ color: "var(--dim)" }}>Quote unavailable</Body1>}
+        <Button size="small" onClick={() => setTicket(true)}>Paper trade</Button>
+        <OrderTicket open={ticket} symbol={symbol} onClose={() => setTicket(false)} />
       </div>
       <OwlChips symbol={symbol} />
       <TabList selectedValue={tab} onTabSelect={(_, d) => go({ kind: "stock", symbol, tab: d.value as StockTab })}>

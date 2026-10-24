@@ -27,6 +27,7 @@ export function parseCommand(text: string, managers: string[]): Command | null {
       : { kind: "error", message: "Usage: ALERT AAPL > 350" };
   }
   if (parts.length === 1 && ["HELP", "?", "ABOUT", "FAQ"].includes(head)) return { kind: "go", route: { kind: "page", page: "settings", params: ["help"] } };
+  if (parts.length === 1 && head === "PAPER") return { kind: "go", route: { kind: "page", page: "portfolio", params: ["paper"] } };
   if (parts.length === 1 && PAGES[head]) return { kind: "go", route: { kind: "page", page: PAGES[head] } };
 
   const fn = parts.length > 1 ? parts[parts.length - 1].toUpperCase() : null;

@@ -3,9 +3,10 @@ import { useRoute } from "../lib/route";
 import { readJson, writeJson } from "../lib/storage";
 import WatchlistsTab from "./portfolio/WatchlistsTab";
 import HoldingsTab from "./portfolio/HoldingsTab";
+import PaperTab from "./portfolio/PaperTab";
 
-export type PortfolioTab = "watchlists" | "holdings";
-const TABS: [PortfolioTab, string][] = [["watchlists", "Watchlists"], ["holdings", "Holdings & risk"]];
+export type PortfolioTab = "watchlists" | "holdings" | "paper";
+const TABS: [PortfolioTab, string][] = [["watchlists", "Watchlists"], ["holdings", "Holdings & risk"], ["paper", "Paper"]];
 const KEY = "howlet_portfolio_tab_v1";
 const isTab = (v: unknown): v is PortfolioTab => TABS.some(([t]) => t === v);
 
@@ -20,12 +21,12 @@ export default function PortfolioPage({ params }: { params: string[] }) {
         <Dropdown aria-label="Account" value="Manual holdings" selectedOptions={["manual"]}>
           <Option value="manual">Manual holdings</Option>
         </Dropdown>
-        <Caption1 style={{ color: "var(--dim)" }}>Paper trading and Schwab accounts arrive in a later update.</Caption1>
+        <Caption1 style={{ color: "var(--dim)" }}>Schwab accounts arrive in a later update.</Caption1>
       </div>
       <TabList selectedValue={tab} onTabSelect={(_, d) => pick(d.value as PortfolioTab)}>
         {TABS.map(([t, label]) => <Tab key={t} value={t}>{label}</Tab>)}
       </TabList>
-      {tab === "watchlists" ? <WatchlistsTab /> : <HoldingsTab />}
+      {tab === "paper" ? <PaperTab /> : tab === "holdings" ? <HoldingsTab /> : <WatchlistsTab />}
     </div>
   );
 }

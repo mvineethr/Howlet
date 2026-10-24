@@ -5,8 +5,7 @@ import { ArrowUp16Regular, ArrowDown16Regular } from "@fluentui/react-icons";
 import { useRef, useState } from "react";
 import { useSettings, PAGE_IDS, type PageId, type Settings } from "../lib/settings";
 import { PAGE_META } from "../shell/Rail";
-import { HOME_KEY } from "../lib/legacy";
-import { writeJson } from "../lib/storage";
+import { resetHome } from "../lib/homeState";
 import { firstRunHome } from "../blocks/registry";
 import { ACCENT_SWATCHES } from "../theme/tokens";
 
@@ -105,7 +104,7 @@ export default function SettingsPage() {
 
       <Card><Subtitle2>Layouts &amp; backup</Subtitle2>
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <Button onClick={() => { writeJson(HOME_KEY, firstRunHome()); setMsg("Home reset to the default 4 blocks."); }}>Restore default Home</Button>
+          <Button onClick={() => { resetHome(firstRunHome); setMsg("Home reset to the default 4 blocks."); }}>Restore default Home</Button>
           <Button onClick={exportState}>Export backup</Button>
           <Button onClick={() => fileRef.current?.click()}>Import backup</Button>
           <input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importState(e.target.files[0])} />

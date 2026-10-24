@@ -1,4 +1,6 @@
-import { Button, Tab, TabList } from "@fluentui/react-components";
+import { Button } from "@fluentui/react-components";
+import HomeTabBar from "./home/HomeTabBar";
+import LayoutsMenu from "./home/LayoutsMenu";
 import AddBlockDialog from "../blocks/AddBlockDialog";
 import { Add16Regular } from "@fluentui/react-icons";
 import { useLayoutEffect, useRef, useState } from "react";
@@ -40,10 +42,9 @@ export default function HomePage() {
 
   return (
     <div style={{ padding: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <TabList selectedValue={tab.id} onTabSelect={(_, d) => save({ ...home, active: String(d.value) })}>
-          {home.tabs.map((t) => <Tab key={t.id} value={t.id}>{t.name}</Tab>)}
-        </TabList>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <HomeTabBar home={home} save={save} />
+        <LayoutsMenu home={home} save={save} />
         <Button icon={<Add16Regular />} appearance="subtle" onClick={() => setAdding(true)}>Add block</Button>
       </div>
       <AddBlockDialog open={adding} onClose={() => setAdding(false)} onAdd={(t, c) => { addBlock(t, c); setAdding(false); }} />

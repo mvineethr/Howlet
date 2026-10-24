@@ -5,7 +5,8 @@ import ConsensusTab from "./smart/ConsensusTab";
 import ManagersTab from "./smart/ManagersTab";
 import InsiderBuysTab from "./smart/InsiderBuysTab";
 import PositionHistoryTab from "./smart/PositionHistoryTab";
-import PlaceholderPage from "./PlaceholderPage";
+import FilingSearchTab from "./smart/FilingSearchTab";
+import FundsTab from "./smart/FundsTab";
 
 export type SmartTab = "managers" | "consensus" | "insiders" | "history" | "search" | "funds";
 export const SMART_TABS: [SmartTab, string][] = [
@@ -27,8 +28,9 @@ export default function SmartMoneyPage({ params }: { params: string[] }) {
   const body = tab === "managers" ? <ManagersTab manager={params[1] ?? "buffett"} />
     : tab === "consensus" ? <ConsensusTab />
     : tab === "insiders" ? <InsiderBuysTab />
-    : tab === "history" ? <PositionHistoryTab manager={params[1] ?? ""} query={params[2] ?? ""} />
-    : <PlaceholderPage title={SMART_TABS.find(([t]) => t === tab)![1]} />;
+    : tab === "history" ? <PositionHistoryTab key={`history:${params[1]}:${params[2]}`} manager={params[1] ?? ""} query={params[2] ?? ""} />
+    : tab === "search" ? <FilingSearchTab key={`search:${params[1]}:${params[2]}`} query={params[1] ?? ""} forms={params[2] ?? ""} />
+    : <FundsTab key={`funds:${params[1]}`} symbol={(params[1] ?? "").toUpperCase()} />;
   return (
     <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
       <TabList selectedValue={tab} onTabSelect={(_, d) => pick(d.value as SmartTab)}>

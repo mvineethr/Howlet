@@ -1,6 +1,6 @@
 import { Body1, Tab, TabList, Title2 } from "@fluentui/react-components";
 import { useApi } from "../lib/useApi";
-import { api } from "../lib/api";
+import { api, type SecurityDetail } from "../lib/api";
 import { useRoute, type StockTab } from "../lib/route";
 import { REFRESH_MS, useSettings } from "../lib/settings";
 import Num from "../components/Num";
@@ -13,6 +13,15 @@ import NewsTab from "./stock/NewsTab";
 import OptionsTab from "./stock/OptionsTab";
 
 const TABS: [StockTab, string][] = [["overview", "Overview"], ["chart", "Chart"], ["financials", "Financials"], ["holders", "Holders"], ["news", "News"], ["options", "Options"]];
+
+const BODY: Record<StockTab, (s: string, q: SecurityDetail | undefined) => JSX.Element> = {
+  overview: (s, q) => <OverviewTab symbol={s} q={q} />,
+  chart: (s) => <ChartTab symbol={s} />,
+  financials: (s) => <FinancialsTab symbol={s} />,
+  holders: (s) => <HoldersTab symbol={s} />,
+  news: (s) => <NewsTab symbol={s} />,
+  options: (s) => <OptionsTab symbol={s} />,
+};
 
 export default function StockPage({ symbol, tab }: { symbol: string; tab: StockTab }) {
   const { showOptions, refresh } = useSettings((s) => s.settings);
@@ -33,21 +42,7 @@ export default function StockPage({ symbol, tab }: { symbol: string; tab: StockT
       <TabList selectedValue={tab} onTabSelect={(_, d) => go({ kind: "stock", symbol, tab: d.value as StockTab })}>
         {tabs.map(([t, label]) => <Tab key={t} value={t}>{label}</Tab>)}
       </TabList>
-      {tab === "overview" ? (
-        <OverviewTab symbol={symbol} q={q} />
-      ) : tab === "chart" ? (
-        <ChartTab symbol={symbol} />
-      ) : tab === "financials" ? (
-        <FinancialsTab symbol={symbol} />
-      ) : tab === "holders" ? (
-        <HoldersTab symbol={symbol} />
-      ) : tab === "news" ? (
-        <NewsTab symbol={symbol} />
-      ) : tab === "options" ? (
-        <OptionsTab symbol={symbol} />
-      ) : (
-        <OptionsTab symbol={symbol} />
-      )}
+      <div key={symbol}>{(BODY[tab === "options" && !showOptions ? "overview" : tab] ?? BODY.overview)(symbol, q)}</div>
     </div>
   );
 }

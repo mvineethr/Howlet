@@ -22,7 +22,7 @@ export default function Block({ title, loading, error, fetchedAt, refreshMs, sec
         </span>} />
       <div style={{ flex: 1, overflow: "auto" }}>
         {error && Children.toArray(children).length === 0 ? (
-          <Caption1 style={{ color: "var(--dim)" }}>{sec ? error.message : "Unavailable, retrying"}</Caption1>
+          <Caption1 style={{ color: "var(--dim)" }}>{sec ? error.message : refreshMs ? "Unavailable, retrying" : "Unavailable"}</Caption1>
         ) : children}
       </div>
     </Card>

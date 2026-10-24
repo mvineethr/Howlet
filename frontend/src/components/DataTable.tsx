@@ -6,7 +6,7 @@ export type Column<T> = {
   render: (r: T) => ReactNode; csv?: (r: T) => string | number | null;
 };
 
-type Props<T> = { columns: Column<T>[]; rows: T[]; rowKey: (r: T) => string; empty: string; onRowClick?: (r: T) => void };
+type Props<T> = { columns: Column<T>[]; rows: T[]; rowKey: (r: T, i: number) => string; empty: string; onRowClick?: (r: T) => void };
 
 export default function DataTable<T>({ columns, rows, rowKey, empty, onRowClick }: Props<T>) {
   if (!rows.length) return <div style={{ color: "var(--dim)", padding: "4px 0" }}>{empty}</div>;
@@ -16,8 +16,8 @@ export default function DataTable<T>({ columns, rows, rowKey, empty, onRowClick 
         <tr>{columns.map((c) => <th key={c.key} style={{ textAlign: c.align ?? "left" }}>{c.label}</th>)}</tr>
       </thead>
       <tbody>
-        {rows.map((r) => (
-          <tr key={rowKey(r)} onClick={onRowClick ? () => onRowClick(r) : undefined} style={onRowClick ? { cursor: "pointer" } : undefined}>
+        {rows.map((r, i) => (
+          <tr key={rowKey(r, i)} onClick={onRowClick ? () => onRowClick(r) : undefined} style={onRowClick ? { cursor: "pointer" } : undefined}>
             {columns.map((c) => <td key={c.key} style={{ textAlign: c.align ?? "left" }}>{c.render(r)}</td>)}
           </tr>
         ))}

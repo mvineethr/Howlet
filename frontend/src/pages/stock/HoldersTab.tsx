@@ -50,7 +50,7 @@ export default function HoldersTab({ symbol }: { symbol: string }) {
             <div style={{ color: "var(--dim)", marginBottom: 6 }}>
               {`last ${ins.data.filings_scanned} Form 4s · ${s.open_market_purchases} buys ${fmtMoney(s.purchase_value_usd)} · ${s.open_market_sales} sells ${fmtMoney(s.sale_value_usd)}`}
             </div>
-            <DataTable columns={TXN_COLS} rows={ins.data.transactions.slice(0, 20)} rowKey={(r) => `${r.accession_number}-${r.insider}-${r.date}-${r.shares}`}
+            <DataTable columns={TXN_COLS} rows={ins.data.transactions.slice(0, 20)} rowKey={(r, i) => `${r.accession_number}-${i}`}
               empty="No non-derivative insider transactions in these filings." />
           </>
         )}

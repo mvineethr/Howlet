@@ -23,3 +23,9 @@ test("empty rows show the empty text", () => {
 test("tableCsv uses labels and csv accessors", () => {
   expect(tableCsv(cols, [{ s: "A", v: 1.5 }])).toBe("SYM,VAL\r\nA,1.5");
 });
+
+test("rowKey receives the row index", () => {
+  const rowKey = vi.fn((_r: R, i: number) => `k${i}`);
+  render(<DataTable columns={cols} rows={[{ s: "A", v: 1 }, { s: "A", v: 1 }]} rowKey={rowKey} empty="none" />);
+  expect(rowKey).toHaveBeenCalledWith({ s: "A", v: 1 }, 1);
+});

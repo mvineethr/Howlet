@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { dispose, init, type Chart, type KLineData, type DeepPartial, type Styles } from "klinecharts";
 import { chartStyles, MAIN_PANE, type Bar } from "../lib/chart";
-import { useSettings } from "../lib/settings";
 
 const readVar = (n: string) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const applyTheme = (c: Chart) => c.setStyles(chartStyles(readVar) as DeepPartial<Styles>);
@@ -12,7 +11,6 @@ export default function KlineChart({ bars, indicators, drawTool }: Props) {
   const el = useRef<HTMLDivElement>(null);
   const chart = useRef<Chart | null>(null);
   const panes = useRef(new Map<string, string>()); // indicator name -> pane id
-  const { themeMode, accent } = useSettings((s) => s.settings);
 
   useEffect(() => {
     const node = el.current!;
@@ -21,14 +19,11 @@ export default function KlineChart({ bars, indicators, drawTool }: Props) {
     if (c) applyTheme(c);
     const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(() => c?.resize()) : null;
     ro?.observe(node);
-    const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
-    const onScheme = () => c && requestAnimationFrame(() => applyTheme(c));
-    mq?.addEventListener("change", onScheme);
-    return () => { ro?.disconnect(); mq?.removeEventListener("change", onScheme); panes.current.clear(); dispose(node); chart.current = null; };
+    // App rewrites :root's inline style on theme/accent change; re-read the tokens when it does.
+    const mo = typeof MutationObserver !== "undefined" ? new MutationObserver(() => c && applyTheme(c)) : null;
+    mo?.observe(document.documentElement, { attributes: true, attributeFilter: ["style"] });
+    return () => { ro?.disconnect(); mo?.disconnect(); panes.current.clear(); dispose(node); chart.current = null; };
   }, []);
-
-  // CSS vars are rewritten by App's effect; re-read them after it runs.
-  useEffect(() => { const c = chart.current; if (c) requestAnimationFrame(() => applyTheme(c)); }, [themeMode, accent]);
 
   useEffect(() => { chart.current?.applyNewData(bars as KLineData[]); }, [bars]);
 

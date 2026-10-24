@@ -13,7 +13,7 @@ const money = (k: keyof FiscalYear, label: string, toned = false): Column<Fiscal
 });
 
 const COLS: Column<FiscalYear>[] = [
-  { key: "fy", label: "Fiscal year", render: (r) => <><b>{`FY${r.fiscal_year}`}</b> <span style={{ color: "var(--dim)" }}>{r.end_date}</span></>, csv: (r) => r.fiscal_year },
+  { key: "fy", label: "Fiscal year", render: (r) => <><b>{`FY${r.fiscal_year}`}</b> <span style={{ color: "var(--dim)" }}>{r.end_date}</span></>, csv: (r) => `FY${r.fiscal_year} ${r.end_date}` },
   money("revenue", "Revenue"),
   money("net_income", "Net income", true),
   { key: "eps", label: "EPS (diluted)", align: "right", render: (r) => <span className="num">{fmtNum(r.eps_diluted)}</span>, csv: (r) => r.eps_diluted },

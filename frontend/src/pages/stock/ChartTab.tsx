@@ -1,5 +1,5 @@
 import { Button, Dropdown, Option, OptionGroup, Tag, TagGroup } from "@fluentui/react-components";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import { useApi } from "../../lib/useApi";
 import { api } from "../../lib/api";
 import { barsFromSecurity, CHART_RANGES, DRAW_TOOLS, INDICATORS } from "../../lib/chart";
@@ -16,7 +16,6 @@ export default function ChartTab({ symbol }: { symbol: string }) {
   const bars = useMemo(() => (sec.data ? barsFromSecurity(sec.data) : []), [sec.data]);
   const active = settings.indicators;
   const draw = (name: string) => setDrawTool({ name, nonce: Date.now() });
-  useEffect(() => setDrawTool(null), [symbol]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

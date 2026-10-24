@@ -79,3 +79,15 @@ Still open:
 - Backend: a cold `/api/holders` (OwlChips fires it on every stock visit) holds `edgar_lock` and queues events/insiders/
   filings behind it on first visit — CLAUDE.md Next-features item 4.
 - CLAUDE.md KLineChart gotcha line reads awkwardly after the 2b edit.
+
+## Added by plan 2c (2026-10-24)
+Resolved in 2c: managers no longer bounce to /classic; picker Enter double-commit; "default" list undeletable;
+watchlist/holdings writes re-read storage first (safe with /classic open in another tab).
+Still open:
+- SEC re-hit on every Smart Money tab visit (useApi has no cross-mount cache) — consensus ≈14 submissions requests per
+  visit; add a module-level promise cache like the holders memo.
+- A typed-but-not-Entered CIK in the Position-history picker is ignored by Show.
+- `/` inside a position-history query or fund symbol 404s (needs `<path:>` routes server-side).
+- Events loader can overlap one in-flight request on list change; failed events are cached for the session.
+- Full-text title doubles user-typed quotes; no FundsTab test; fractional PF shares display rounded (same as classic).
+- Watchlist/holdings views refresh from storage only on the next edit.

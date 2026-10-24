@@ -27,3 +27,22 @@ test("useApi with a null key does not fetch", () => {
   renderHook(() => useApi(null, fetcher));
   expect(fetcher).not.toHaveBeenCalled();
 });
+
+test("useApi drops a slow response from a previous key", async () => {
+  const deferred = <V,>() => {
+    let resolve!: (v: V) => void;
+    const promise = new Promise<V>((r) => { resolve = r; });
+    return { promise, resolve };
+  };
+  const slow = deferred<string>();
+  const fa = () => slow.promise;
+  const fb = () => Promise.resolve("B");
+  const { result, rerender } = renderHook(
+    ({ k, f }: { k: string; f: () => Promise<string> }) => useApi(k, f),
+    { initialProps: { k: "a", f: fa } },
+  );
+  rerender({ k: "b", f: fb });
+  await waitFor(() => expect(result.current.data).toBe("B"));
+  await act(async () => { slow.resolve("A"); await slow.promise; });
+  expect(result.current.data).toBe("B");
+});

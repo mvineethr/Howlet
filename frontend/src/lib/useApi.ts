@@ -7,14 +7,16 @@ export function useApi<T>(key: string | null, fetcher: () => Promise<T>, refresh
   const [fetchedAt, setFetchedAt] = useState<number>();
   const fetcherRef = useRef(fetcher);
   fetcherRef.current = fetcher;
+  const reqId = useRef(0);
 
   const load = useCallback(() => {
     if (key === null) return;
+    const id = ++reqId.current;
     setLoading(true);
     fetcherRef.current()
-      .then((d) => { setData(d); setError(undefined); setFetchedAt(Date.now()); })
-      .catch((e: Error) => setError(e)) // keep last good data on failure
-      .finally(() => setLoading(false));
+      .then((d) => { if (id === reqId.current) { setData(d); setError(undefined); setFetchedAt(Date.now()); } })
+      .catch((e: Error) => { if (id === reqId.current) setError(e); }) // keep last good data on failure
+      .finally(() => { if (id === reqId.current) setLoading(false); });
   }, [key]);
 
   useEffect(() => {
@@ -25,6 +27,9 @@ export function useApi<T>(key: string | null, fetcher: () => Promise<T>, refresh
     const id = setInterval(load, refreshMs);
     return () => clearInterval(id);
   }, [key, refreshMs, load]);
+
+  // Drop any in-flight response once the key changes or the block unmounts.
+  useEffect(() => () => { reqId.current++; }, [key]);
 
   return { data, error, loading, fetchedAt, reload: load };
 }

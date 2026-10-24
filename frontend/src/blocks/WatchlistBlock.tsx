@@ -10,9 +10,10 @@ export default function WatchlistBlock({ list = "default", onRemove }: { list?: 
   const refreshMs = REFRESH_MS[useSettings((s) => s.settings.refresh)];
   const symbols = getWatchlists()[list] ?? [];
   const go = useRoute((r) => r.go);
-  const { data, error, loading, fetchedAt } = useApi(`wl:${list}:${symbols.join(",")}`, () => api.quotes(symbols), refreshMs);
+  const { data, error, loading, fetchedAt } = useApi(symbols.length ? `wl:${list}:${symbols.join(",")}` : null, () => api.quotes(symbols), refreshMs);
   return (
     <Block title={`Watchlist · ${list}`} {...{ loading, error, fetchedAt, refreshMs, onRemove }}>
+      {!symbols.length && <span style={{ color: "var(--dim)" }}>Empty list — add symbols in the classic view's MY screen for now.</span>}
       {data && (
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <tbody>

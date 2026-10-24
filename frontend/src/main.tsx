@@ -4,6 +4,12 @@ import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import "./index.css";
 import App from "./App";
+import { applyCssVars, resolveMode } from "./theme/theme";
+import { useSettings } from "./lib/settings";
+
+// Set theme vars before first render so dark mode never flashes white.
+const s0 = useSettings.getState().settings;
+applyCssVars(resolveMode(s0.themeMode, window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false) === "dark", s0.accent);
 
 // Plain HTML on purpose: must render even if Fluent itself is what failed.
 class Boundary extends React.Component<{ children: React.ReactNode }, { err: Error | null }> {

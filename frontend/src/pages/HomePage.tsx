@@ -41,7 +41,7 @@ export default function HomePage() {
           </MenuList></MenuPopover>
         </Menu>
       </div>
-      <Grid className="layout" rowHeight={28} margin={[10, 10]} draggableHandle=".drag-handle"
+      <Grid className="layout" measureBeforeMount rowHeight={28} margin={[10, 10]} draggableHandle=".drag-handle"
         breakpoints={{ lg: 0 }} cols={{ lg: 12 }}
         layouts={{ lg: tab.blocks.map(({ i, x, y, w, h }) => ({ i, x, y, w, h, minW: 3, minH: 4 })) }}
         onLayoutChange={onLayout}>

@@ -217,7 +217,7 @@ treatment, first-ever `:focus-visible` styles, a motion layer with a
 (it asserted liveness it could not know). Chart theme now reads `:root`.
 168/102 line diff, tests still green, verified live in the browser.
 
-React shell live at `/` (2026-10-23): rail, Ctrl+K, settings, Home grid, stock overview + owl chips, alerts bell; other pages still in `/classic`.
+React shell live at `/` (2026-10-23): rail, Ctrl+K, settings, Home grid, stock overview + owl chips, alerts bell; News, Markets (stocks/crypto/FX/economy) and Screener pages (2026-10-24); other pages still in `/classic`.
 
 Known-untested: FRED with a real key; pre-2013 SGML filings (should
 error clearly, never exercised).

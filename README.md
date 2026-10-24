@@ -167,8 +167,7 @@ from the tracked managers (with opt-in desktop notifications), and
 EXPORT/IMPORT in the tab bar backs up ALL of it to a JSON file. Every block has ↔ / ↕ toggles to make it full-width
 or double-height, and the LAYOUTS control in the tab bar saves named
 snapshots of your entire screen (all tabs + blocks + sizes) that you can
-reload or delete any time. One click restores the classic layout if you
-want the original look back. Everything persists in your browser. Clicking
+reload or delete any time. Everything persists in your browser. Clicking
 any symbol opens the full security screen, and its ← BACK button returns
 you to wherever you came from.
 

@@ -23,7 +23,6 @@ class Boundary extends React.Component<{ children: React.ReactNode }, { err: Err
         <pre style={{ whiteSpace: "pre-wrap" }}>{this.state.err.message}</pre>
         <p>Your watchlists, alerts and portfolio are untouched. Resetting only clears display settings and the Home layout.</p>
         <button onClick={() => { localStorage.removeItem("howlet_settings_v1"); localStorage.removeItem("howlet_home_v1"); location.reload(); }}>Reset settings</button>
-        {" "}<a href="/classic">Open classic view</a>
       </div>
     );
   }

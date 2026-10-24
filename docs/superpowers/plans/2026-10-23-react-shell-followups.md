@@ -91,3 +91,6 @@ Still open:
 - Events loader can overlap one in-flight request on list change; failed events are cached for the session.
 - Full-text title doubles user-typed quotes; no FundsTab test; fractional PF shares display rounded (same as classic).
 - Watchlist/holdings views refresh from storage only on the next edit.
+
+## /classic retired (plan 2d, 2026-10-24)
+`/classic` and `dashboard.html` are gone; `/classic` now 404s and `/` returns a plain-text 503 if `static/app` was never built. The React app reads the old localStorage keys (lib/legacy.ts), so user data carries over. Comments saying "shared with the classic page" in lib/ are now just history.

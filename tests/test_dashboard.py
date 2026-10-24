@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from howlet import dashboard
 from howlet.dashboard import create_app
 from howlet.market import Quote
 from howlet.models import FilingSummary, Holding
@@ -93,14 +94,18 @@ def test_regulatory_endpoint_wraps_federal_register(api, monkeypatch):
                      "publication_date": "2026-07-17"}]
 
 
-def test_root_serves_react_app_and_classic_serves_old_page(api):
+def test_root_serves_react_app_and_classic_is_gone(api):
     root = api.get("/")
     assert root.status_code == 200
     assert b'<div id="root">' in root.data
+    assert api.get("/classic").status_code == 404
 
-    classic = api.get("/classic")
-    assert classic.status_code == 200
-    assert b"HOWLET" in classic.data
+
+def test_root_without_build_is_503(api, monkeypatch, tmp_path):
+    monkeypatch.setattr(dashboard, "_APP_INDEX", tmp_path / "missing.html")
+    resp = api.get("/")
+    assert resp.status_code == 503
+    assert b"npm run build" in resp.data
 
 
 def test_managers_deduplicates_alias_ciks(api):

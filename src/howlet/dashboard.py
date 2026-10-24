@@ -1,6 +1,6 @@
 """Bloomberg-terminal-style web dashboard for Howlet.
 
-Serves a single-page dark terminal UI (see `dashboard.html`) backed by a
+Serves the React terminal UI (built from `frontend/`) backed by a
 small JSON API. All data assembly lives in `views.py` (shared with the
 `howlet mcp` AI tool server); this module is just Flask wiring.
 
@@ -31,7 +31,6 @@ from .views import Services
 DashboardServices = Services
 TAPE_SYMBOLS = views.TAPE_SYMBOLS
 
-_HTML_PATH = Path(__file__).parent / "dashboard.html"
 _APP_INDEX = Path(__file__).parent / "static" / "app" / "index.html"
 
 
@@ -56,13 +55,12 @@ def create_app(
 
     @app.get("/")
     def index() -> Response:
-        # The React build; fall back to the classic page if it was never built.
-        path = _APP_INDEX if _APP_INDEX.exists() else _HTML_PATH
-        return Response(path.read_text(encoding="utf-8"), mimetype="text/html")
-
-    @app.get("/classic")
-    def classic() -> Response:
-        return Response(_HTML_PATH.read_text(encoding="utf-8"), mimetype="text/html")
+        if not _APP_INDEX.exists():
+            return Response(
+                "Dashboard build missing - run `npm run build` in frontend/",
+                status=503, mimetype="text/plain",
+            )
+        return Response(_APP_INDEX.read_text(encoding="utf-8"), mimetype="text/html")
 
     @app.get("/api/managers")
     def managers():

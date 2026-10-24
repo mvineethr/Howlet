@@ -3,11 +3,10 @@ import { useEffect, useMemo, useState } from "react";
 import { buildTheme, resolveMode, applyCssVars } from "./theme/theme";
 import { useSettings, type PageId } from "./lib/settings";
 import { useRoute, visibleRail } from "./lib/route";
-import Rail, { PAGE_META } from "./shell/Rail";
+import Rail from "./shell/Rail";
 import TopBar from "./shell/TopBar";
 import CommandBox from "./shell/CommandBox";
 import AlertsBell from "./shell/AlertsBell";
-import PlaceholderPage from "./pages/PlaceholderPage";
 import StockPage from "./pages/StockPage";
 import HomePage from "./pages/HomePage";
 import SettingsPage from "./pages/SettingsPage";
@@ -57,7 +56,7 @@ export default function App() {
 
   const page = route.kind === "stock"
     ? <StockPage symbol={route.symbol} tab={route.tab} />
-    : (PAGES[route.page]?.(route.params ?? []) ?? <PlaceholderPage title={PAGE_META[route.page].label} />);
+    : (PAGES[route.page]?.(route.params ?? []) ?? null);
 
   return (
     <FluentProvider theme={theme} style={{ height: "100vh", display: "flex", flexDirection: "column", fontSize: TEXT_SCALE[settings.textSize] }}

@@ -125,6 +125,18 @@ function holdersMemoised(symbol: string): Promise<HoldersResult> {
   return p;
 }
 
+// In-flight + TTL promise memo: useApi has no cross-instance cache, so equal calls would double-fetch.
+const apiMemo = new Map<string, { at: number; p: Promise<unknown> }>();
+export const clearApiMemo = () => apiMemo.clear();
+function memo<T>(key: string, ttlMs: number, fetch: () => Promise<T>): Promise<T> {
+  const hit = apiMemo.get(key);
+  if (hit && Date.now() - hit.at < ttlMs) return hit.p as Promise<T>;
+  const p = fetch();
+  apiMemo.set(key, { at: Date.now(), p });
+  p.catch(() => { if (apiMemo.get(key)?.p === p) apiMemo.delete(key); });
+  return p;
+}
+
 const q = encodeURIComponent;
 export const api = {
   quotes: (symbols: string[]) => getJson<Quote[]>(`/api/quotes?symbols=${q(symbols.slice(0, 30).join(","))}`),
@@ -144,12 +156,12 @@ export const api = {
   markets: () => getJson<MarketSection[]>("/api/markets"),
   crypto: (limit = 50) => getJson<CryptoResult>(`/api/crypto?limit=${limit}`),
   fx: () => getJson<FxResult>("/api/fx"),
-  macro: () => getJson<MacroResult>("/api/macro"),
+  macro: () => memo("macro", 5 * 60_000, () => getJson<MacroResult>("/api/macro")),
   fedEvents: (limit = 15) => getJson<NewsItem[]>(`/api/fed-events?limit=${limit}`),
   regulatory: (limit = 15) => getJson<RegDoc[]>(`/api/regulatory?limit=${limit}`),
   screener: (qs: string) => getJson<ScreenerResult>(`/api/screener?${qs}`),
-  portfolio: (id: string, top = 25) => getJson<Portfolio>(`/api/portfolio/${q(id)}?top=${top}`),
-  consensus: (min = 2, limit = 25) => getJson<Consensus>(`/api/consensus?min=${min}&limit=${limit}`),
+  portfolio: (id: string, top = 25) => memo(`portfolio:${id.toLowerCase()}:${top}`, 10 * 60_000, () => getJson<Portfolio>(`/api/portfolio/${q(id)}?top=${top}`)),
+  consensus: (min = 2, limit = 25) => memo(`consensus:${min}:${limit}`, 10 * 60_000, () => getJson<Consensus>(`/api/consensus?min=${min}&limit=${limit}`)),
   insiderBuys: (symbols: string[], filings = 8) => getJson<InsiderBuys>(`/api/insider-buys?filings=${filings}&symbols=${q(symbols.join(","))}`),
   positionHistory: (id: string, query: string, quarters = 8) => getJson<PositionHistory>(`/api/position-history/${q(id)}/${q(query)}?quarters=${quarters}`),
   fulltext: (query: string, forms: string[] = [], limit = 25) =>

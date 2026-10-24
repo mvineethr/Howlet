@@ -23,7 +23,7 @@ Changelog = "https://github.com/mvineethr/Howlet/blob/main/CHANGELOG.md"
 dev = [
     "pytest>=8.0",
     "responses>=0.25",
-    "ruff>=0.4",
+    "ruff>=0.4,<0.17",  # 0.17 widened the default rule set (224 findings in existing code); adopt it deliberately
 ]
 mcp = [
     "mcp>=1.2",

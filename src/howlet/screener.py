@@ -12,6 +12,8 @@ source for that index's live membership list that this project wants to
 depend on. `DEFAULT_UNIVERSE` is a hand-picked set of large, liquid,
 well-known names across sectors; pass your own `universe` (e.g. a
 watchlist, or the union of tracked managers' holdings) for anything else.
+`build_consensus_universe` builds that last one for you: every ticker
+the tracked 13F managers hold, from their latest filings.
 
 Results are cached to disk per (ticker, calendar day) - fundamentals
 change quarterly and price daily, so re-screening the same day is fast.
@@ -25,13 +27,17 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
+from .cache import CACHE_VERSION, FilingCache
+from .client import EdgarClient
+from .consensus import fetch_latest_portfolios
 from .fundamentals import (
     FundamentalsClient,
     extract_annual_metrics,
     extract_shares_outstanding,
 )
 from .market import YahooMarketClient
-from .tickers import default_cache_dir
+from .presets import FAMOUS_INVESTORS
+from .tickers import CusipTickerResolver, default_cache_dir
 
 DEFAULT_UNIVERSE = [
     # Tech
@@ -53,49 +59,98 @@ DEFAULT_UNIVERSE = [
 @dataclass
 class ScreenRow:
     symbol: str
-    price: Optional[float] = None
-    market_cap: Optional[float] = None
-    pe_ratio: Optional[float] = None
-    eps_diluted: Optional[float] = None
-    revenue: Optional[float] = None
-    revenue_growth_pct: Optional[float] = None
-    net_margin_pct: Optional[float] = None
-    change_pct: Optional[float] = None
+    price: float | None = None
+    market_cap: float | None = None
+    pe_ratio: float | None = None
+    eps_diluted: float | None = None
+    revenue: float | None = None
+    revenue_growth_pct: float | None = None
+    net_margin_pct: float | None = None
+    change_pct: float | None = None
 
 
 class ScreenerCache:
-    """Ticker -> {day: row_dict}, so a same-day re-screen skips network."""
+    """Ticker -> {day: row_dict}, so a same-day re-screen skips network.
 
-    def __init__(self, cache_dir: Optional[Path] = None):
+    Rows are held in memory and written to disk once by `save()` (called
+    by `screen()` at the end of a run) instead of rewriting the whole
+    JSON file per symbol - a 45-symbol screen used to be O(n^2) file I/O.
+    """
+
+    def __init__(self, cache_dir: Path | None = None):
         self.path = (Path(cache_dir) if cache_dir else default_cache_dir()) / "screener_cache.json"
+        self._data: dict | None = None  # lazily loaded from disk
+        self._dirty = False  # True once put() has changed _data
 
     def _load(self) -> dict:
         try:
             with open(self.path, encoding="utf-8") as f:
-                return json.load(f)
+                raw = json.load(f)
+            if not isinstance(raw, dict) or raw.get("version") != CACHE_VERSION:
+                return {}
+            data = raw.get("data")
+            return data if isinstance(data, dict) else {}
         except (OSError, ValueError):
             return {}
 
-    def get(self, symbol: str, day: str) -> Optional[dict]:
-        return self._load().get(symbol, {}).get(day)
+    def _ensure_loaded(self) -> None:
+        if self._data is None:
+            self._data = self._load()
+
+    def get(self, symbol: str, day: str) -> dict | None:
+        self._ensure_loaded()
+        return self._data.get(symbol, {}).get(day)
 
     def put(self, symbol: str, day: str, row: dict) -> None:
+        # In-memory only; the file is written once by save().
+        self._ensure_loaded()
+        self._data.setdefault(symbol, {})[day] = row
+        self._dirty = True
+
+    def save(self) -> None:
+        """Flush in-memory rows to disk. No-op when nothing changed."""
+        if not self._dirty:
+            return
         try:
-            data = self._load()
-            data.setdefault(symbol, {})[day] = row
             self.path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(data, f)
+                json.dump({"version": CACHE_VERSION, "data": self._data}, f)
+            self._dirty = False
         except OSError:
             pass
+
+
+def build_consensus_universe(
+    client: EdgarClient,
+    cache: FilingCache | None = None,
+    resolver: CusipTickerResolver | None = None,
+) -> list[str]:
+    """Every ticker the tracked 13F managers hold, sorted, deduplicated.
+
+    The universe the screener was missing: instead of a hardcoded list
+    that rots, screen what smart money actually owns. Pulls every
+    tracked manager's latest 13F (disk-cached after the first run),
+    unions the CUSIPs, and maps them to tickers via the OpenFIGI disk
+    cache (same resolver the dashboard's holders view uses). CUSIPs
+    with no ticker are skipped, not failed - a fund, a foreign listing,
+    or an unmapped CUSIP just doesn't screen. Returns [] when no
+    manager portfolio loads (all feeds down), so callers can fall back
+    to DEFAULT_UNIVERSE.
+    """
+    portfolios = fetch_latest_portfolios(client, FAMOUS_INVESTORS, cache=cache)
+    cusips = sorted({c for p in portfolios for c in p.positions})
+    if not cusips:
+        return []
+    tickers = (resolver or CusipTickerResolver()).resolve(cusips)
+    return sorted({t for t in tickers.values() if t})
 
 
 def screen(
     market: YahooMarketClient,
     fundamentals: FundamentalsClient,
-    universe: Optional[list[str]] = None,
-    cache: Optional[ScreenerCache] = None,
-    filters: Optional[dict[str, tuple[Optional[float], Optional[float]]]] = None,
+    universe: list[str] | None = None,
+    cache: ScreenerCache | None = None,
+    filters: dict[str, tuple[float | None, float | None]] | None = None,
 ) -> list[ScreenRow]:
     """Compute screen rows for `universe` (default: DEFAULT_UNIVERSE).
 
@@ -104,12 +159,17 @@ def screen(
     """
     universe = universe or DEFAULT_UNIVERSE
     today = date.today().isoformat()
-    rows = [
-        _screen_one(symbol, market, fundamentals, cache, today) for symbol in universe
-    ]
+    rows = []
+    for symbol in universe:
+        try:
+            rows.append(_screen_one(symbol, market, fundamentals, cache, today))
+        except Exception:
+            continue  # one broken symbol must not kill the screen
     rows = [r for r in rows if r is not None]
     if filters:
         rows = [r for r in rows if _passes_filters(r, filters)]
+    if cache is not None:
+        cache.save()  # one file write for the whole run (see B3)
     return rows
 
 
@@ -117,9 +177,9 @@ def _screen_one(
     symbol: str,
     market: YahooMarketClient,
     fundamentals: FundamentalsClient,
-    cache: Optional[ScreenerCache],
+    cache: ScreenerCache | None,
     today: str,
-) -> Optional[ScreenRow]:
+) -> ScreenRow | None:
     if cache is not None:
         cached = cache.get(symbol, today)
         if cached is not None:
@@ -135,7 +195,10 @@ def _screen_one(
     shares = None
     cik = fundamentals.ticker_to_cik(symbol)
     if cik is not None:
-        facts = fundamentals.get_company_facts(cik)
+        try:
+            facts = fundamentals.get_company_facts(cik)
+        except Exception:
+            return None  # SEC hiccup on one symbol: skip it, like a quote failure
         years = extract_annual_metrics(facts, years=2)
         shares = extract_shares_outstanding(facts)
     row = _build_row(symbol, quote.price, quote.change_pct, shares, years)

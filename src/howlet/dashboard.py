@@ -18,6 +18,8 @@ Run via `howlet dashboard` or:
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -28,6 +30,15 @@ from . import views
 from .paper import DEFAULT_START_CASH, PaperError
 from .views import Services
 
+# Env var for the dashboard token (see create_app). When set, every
+# mutating paper endpoint requires it; when unset, the dashboard is
+# local-only by default (bind 127.0.0.1) and mutations need no token.
+DASHBOARD_TOKEN_ENV = "HOWLET_DASHBOARD_TOKEN"
+
+# Mutating paper endpoints: the only routes that change server state.
+# /api/risk is POST but read-only (it computes, never stores).
+_MUTATING_PAPER_PREFIX = "/api/paper"
+
 # Kept as aliases so existing imports/tests keep working.
 DashboardServices = Services
 TAPE_SYMBOLS = views.TAPE_SYMBOLS
@@ -37,12 +48,37 @@ _APP_INDEX = Path(__file__).parent / "static" / "app" / "index.html"
 
 def create_app(
     user_agent: str,
-    cache_dir: Optional[Path] = None,
-    services: Optional[Services] = None,
+    cache_dir: Path | None = None,
+    services: Services | None = None,
+    dashboard_token: str | None = None,
 ) -> Flask:
-    """Build the Flask app. `services` is injectable for tests."""
+    """Build the Flask app. `services` is injectable for tests.
+
+    `dashboard_token` (or the HOWLET_DASHBOARD_TOKEN env var) guards the
+    mutating paper endpoints (place/cancel/reset an order). Reads are
+    never gated. When no token is configured the dashboard must stay
+    local-only: it binds 127.0.0.1 by default, and run_dashboard warns
+    loudly if you point it at a non-loopback address without a token.
+    """
     app = Flask(__name__)
     svc = services or Services(user_agent, cache_dir=cache_dir)
+    token = dashboard_token or os.environ.get(DASHBOARD_TOKEN_ENV) or None
+    app.config["DASHBOARD_TOKEN"] = token
+
+    @app.before_request
+    def _require_token_for_paper_writes():
+        if token is None:
+            return None  # no token configured: local-only dashboard
+        if request.method == "GET" or not request.path.startswith(_MUTATING_PAPER_PREFIX):
+            return None
+        presented = request.headers.get("X-Howlet-Token")
+        if presented is None:
+            auth = request.headers.get("Authorization", "")
+            if auth.startswith("Bearer "):
+                presented = auth[len("Bearer "):]
+        if presented != token:
+            return jsonify({"error": "Dashboard token required for this endpoint"}), 401
+        return None
 
     @app.errorhandler(requests.RequestException)
     def upstream_error(exc):
@@ -57,6 +93,13 @@ def create_app(
     @app.errorhandler(PaperError)
     def bad_request(exc):
         return jsonify({"error": str(exc)}), 400
+
+    @app.errorhandler(ValueError)
+    def invalid_param(exc):
+        # Malformed query params (e.g. ?top=abc) and invalid request
+        # bodies surface as ValueError - the frontend must get JSON 400,
+        # never Flask's HTML 500 page.
+        return jsonify({"error": str(exc) or "Invalid request parameter"}), 400
 
     @app.get("/")
     def index() -> Response:
@@ -191,6 +234,11 @@ def create_app(
         symbols = [s for s in symbols_arg.split(",") if s] if symbols_arg else None
         return jsonify(views.news_view(svc, symbols=symbols, limit=limit))
 
+    @app.get("/api/news/health")
+    def news_health():
+        """Per-feed RSS status (see news.NewsClient.feed_health)."""
+        return jsonify({"feeds": svc.news.feed_health()})
+
     @app.get("/api/events/<symbol>")
     def events(symbol: str):
         return jsonify(views.events_view(svc, symbol))
@@ -207,7 +255,14 @@ def create_app(
     @app.get("/api/screener")
     def screener():
         universe_arg = request.args.get("universe", "").strip()
-        universe = [s for s in universe_arg.split(",") if s] if universe_arg else None
+        # ?universe=consensus screens what the tracked 13F managers
+        # hold; anything else is a comma-separated ticker list.
+        universe_source = None
+        if universe_arg.lower() == "consensus":
+            universe_source = "consensus"
+            universe = None
+        else:
+            universe = [s for s in universe_arg.split(",") if s] if universe_arg else None
         filters = {}
         for field in (
             "pe_ratio", "market_cap", "revenue_growth_pct", "net_margin_pct",
@@ -219,7 +274,8 @@ def create_app(
                     float(lo) if lo is not None else None,
                     float(hi) if hi is not None else None,
                 )
-        return jsonify(views.screener_view(svc, universe=universe, filters=filters or None))
+        return jsonify(views.screener_view(svc, universe=universe, filters=filters or None,
+                                            universe_source=universe_source))
 
     @app.get("/api/options/<symbol>")
     def options(symbol: str):
@@ -266,7 +322,34 @@ def run_dashboard(
     user_agent: str,
     host: str = "127.0.0.1",
     port: int = 8813,
-    cache_dir: Optional[Path] = None,
-) -> None:  # pragma: no cover - thin wrapper around app.run
-    app = create_app(user_agent, cache_dir=cache_dir)
-    app.run(host=host, port=port, threaded=True)
+    cache_dir: Path | None = None,
+    token: str | None = None,
+) -> None:  # pragma: no cover - thin wrapper around waitress
+    """Serve the dashboard with waitress (cross-platform, unlike
+    gunicorn which doesn't run on Windows).
+
+    Default bind is loopback only. A loopback bind inside Docker is not
+    reachable through `-p` port publishing (Docker NATs to the
+    container's eth0, not its loopback) - use `--network host` or run
+    `howlet dashboard` on the host instead. Binding a non-loopback
+    address without a dashboard token leaves paper-order endpoints open
+    to the network, so that combination prints a loud warning: set
+    HOWLET_DASHBOARD_TOKEN (or --token) before sharing the dashboard.
+    """
+    try:
+        from waitress import serve
+    except ImportError as exc:  # pragma: no cover - waitress is a declared dependency
+        raise RuntimeError(
+            "waitress is required to serve the dashboard: pip install waitress"
+        ) from exc
+    effective_token = token or os.environ.get(DASHBOARD_TOKEN_ENV) or None
+    if host not in ("127.0.0.1", "localhost", "::1") and not effective_token:
+        print(
+            "WARNING: dashboard bound to a non-loopback address "
+            f"({host}) with no dashboard token set - anyone on that "
+            "network can place paper orders and reset the paper account. "
+            "Set HOWLET_DASHBOARD_TOKEN (or --token) before sharing.",
+            file=sys.stderr,
+        )
+    app = create_app(user_agent, cache_dir=cache_dir, dashboard_token=effective_token)
+    serve(app, host=host, port=port, threads=8, ident="howlet")

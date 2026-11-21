@@ -13,11 +13,11 @@ from dataclasses import dataclass
 from typing import Optional
 
 
-def sma(values: list[float], window: int) -> list[Optional[float]]:
+def sma(values: list[float], window: int) -> list[float | None]:
     """Simple moving average, aligned 1:1 with `values` (None until warmed up)."""
     if window <= 0:
         raise ValueError("window must be positive")
-    out: list[Optional[float]] = [None] * len(values)
+    out: list[float | None] = [None] * len(values)
     running = 0.0
     for i, v in enumerate(values):
         running += v
@@ -28,11 +28,11 @@ def sma(values: list[float], window: int) -> list[Optional[float]]:
     return out
 
 
-def ema(values: list[float], window: int) -> list[Optional[float]]:
+def ema(values: list[float], window: int) -> list[float | None]:
     """Exponential moving average, seeded with an SMA over the first window."""
     if window <= 0:
         raise ValueError("window must be positive")
-    out: list[Optional[float]] = [None] * len(values)
+    out: list[float | None] = [None] * len(values)
     if len(values) < window:
         return out
     k = 2.0 / (window + 1)
@@ -45,9 +45,9 @@ def ema(values: list[float], window: int) -> list[Optional[float]]:
     return out
 
 
-def rsi(values: list[float], window: int = 14) -> list[Optional[float]]:
+def rsi(values: list[float], window: int = 14) -> list[float | None]:
     """Wilder's RSI (0-100). None for the warm-up period."""
-    out: list[Optional[float]] = [None] * len(values)
+    out: list[float | None] = [None] * len(values)
     if len(values) <= window:
         return out
 
@@ -77,9 +77,9 @@ def _rsi_from_averages(avg_gain: float, avg_loss: float) -> float:
 
 @dataclass
 class MACDResult:
-    macd: list[Optional[float]]
-    signal: list[Optional[float]]
-    histogram: list[Optional[float]]
+    macd: list[float | None]
+    signal: list[float | None]
+    histogram: list[float | None]
 
 
 def macd(
@@ -89,7 +89,7 @@ def macd(
     fast_ema, slow_ema = ema(values, fast), ema(values, slow)
     macd_line = [
         (f - s) if (f is not None and s is not None) else None
-        for f, s in zip(fast_ema, slow_ema)
+        for f, s in zip(fast_ema, slow_ema, strict=True)  # same closes -> same length
     ]
     # EMA of the MACD line itself, skipping the leading None gap.
     first = next((i for i, v in enumerate(macd_line) if v is not None), None)
@@ -97,29 +97,29 @@ def macd(
         return MACDResult(macd_line, [None] * len(values), [None] * len(values))
 
     tail_ema = ema([v for v in macd_line[first:] if v is not None], signal)
-    signal_line: list[Optional[float]] = [None] * len(values)
+    signal_line: list[float | None] = [None] * len(values)
     signal_line[first : first + len(tail_ema)] = tail_ema
 
     hist = [
         (m - s) if (m is not None and s is not None) else None
-        for m, s in zip(macd_line, signal_line)
+        for m, s in zip(macd_line, signal_line, strict=True)  # signal is an EMA of macd_line
     ]
     return MACDResult(macd_line, signal_line, hist)
 
 
 @dataclass
 class BollingerBands:
-    upper: list[Optional[float]]
-    mid: list[Optional[float]]
-    lower: list[Optional[float]]
+    upper: list[float | None]
+    mid: list[float | None]
+    lower: list[float | None]
 
 
 def bollinger_bands(
     values: list[float], window: int = 20, num_std: float = 2.0
 ) -> BollingerBands:
     mid = sma(values, window)
-    upper: list[Optional[float]] = [None] * len(values)
-    lower: list[Optional[float]] = [None] * len(values)
+    upper: list[float | None] = [None] * len(values)
+    lower: list[float | None] = [None] * len(values)
     for i in range(len(values)):
         if mid[i] is None:
             continue
@@ -153,7 +153,7 @@ class OpeningRangeBreakout:
 
 def opening_range_breakout(
     highs: list[float], lows: list[float], closes: list[float], opening_bars: int = 6
-) -> Optional[OpeningRangeBreakout]:
+) -> OpeningRangeBreakout | None:
     """Classic ORB: range of the first `opening_bars` intraday bars (e.g.
     6 x 5-minute bars = the first 30 minutes), compared to the latest price.
     Needs intraday (intraday-interval) bars for today, not daily closes.

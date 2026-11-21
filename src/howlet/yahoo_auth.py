@@ -20,6 +20,7 @@ market-data failures degrade gracefully instead of breaking 13F views.
 
 from __future__ import annotations
 
+import time
 from typing import Optional
 
 import requests
@@ -29,24 +30,40 @@ _DEFAULT_UA = (
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
 
+# How long to wait after a failed crumb fetch before trying again.
+# A single transient Yahoo outage must not disable earnings/options
+# for the process lifetime: the old `_attempted` boolean was set even
+# on failure, and its only reset path - a 401 - was unreachable when
+# no crumb existed (no request is ever made without one), so one
+# outage at startup killed the feature until restart.
+_CRUMB_RETRY_SECONDS = 60.0
+
 
 class YahooAuthSession:
     """Lazily fetches and caches a cookie+crumb pair for one process."""
 
-    def __init__(self, user_agent: Optional[str] = None):
+    def __init__(self, user_agent: str | None = None):
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": user_agent or _DEFAULT_UA})
-        self._crumb: Optional[str] = None
-        self._attempted = False
+        self._crumb: str | None = None
+        # Monotonic timestamp of the last failed crumb fetch (None if
+        # never failed). A failed fetch is retried once its age passes
+        # _CRUMB_RETRY_SECONDS instead of never.
+        self._failed_at: float | None = None
 
-    def get_crumb(self) -> Optional[str]:
-        """The cached crumb, fetching it once. None if the flow fails."""
-        if self._crumb is None and not self._attempted:
-            self._crumb = self._fetch_crumb()
-            self._attempted = True
+    def get_crumb(self) -> str | None:
+        """The cached crumb, refetching after a failed attempt ages out."""
+        if self._crumb is None:
+            retry_due = self._failed_at is None or (
+                time.monotonic() - self._failed_at >= _CRUMB_RETRY_SECONDS
+            )
+            if retry_due:
+                self._crumb = self._fetch_crumb()
+                if self._crumb is None:
+                    self._failed_at = time.monotonic()
         return self._crumb
 
-    def _fetch_crumb(self) -> Optional[str]:
+    def _fetch_crumb(self) -> str | None:
         try:
             self.session.get("https://fc.yahoo.com", timeout=10)
             resp = self.session.get(
@@ -59,7 +76,7 @@ class YahooAuthSession:
         except requests.RequestException:
             return None
 
-    def get(self, url: str, params: Optional[dict] = None, **kwargs) -> Optional[requests.Response]:
+    def get(self, url: str, params: dict | None = None, **kwargs) -> requests.Response | None:
         """GET with the crumb attached. Retries the crumb once on 401.
 
         Returns None (never raises) if auth can't be established at all -
@@ -79,7 +96,7 @@ class YahooAuthSession:
         if resp.status_code == 401:
             # Crumb may have expired; refresh once and retry.
             self._crumb = None
-            self._attempted = False
+            self._failed_at = None  # force an immediate refetch
             crumb = self.get_crumb()
             if crumb is None:
                 return None

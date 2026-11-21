@@ -107,6 +107,14 @@ def test_list_nport_accessions_dedupes_and_orders():
 def test_get_fund_holdings_parses_info_and_positions():
     responses.get(
         "https://www.sec.gov/Archives/edgar/data/1579982/"
+        "000094040026025084/index.json",
+        json={"directory": {"item": [
+            {"name": "primary_doc.xml"},
+            {"name": "index.htm"},
+        ]}},
+    )
+    responses.get(
+        "https://www.sec.gov/Archives/edgar/data/1579982/"
         "000094040026025084/primary_doc.xml",
         body=SAMPLE_NPORT_XML,
     )
@@ -121,3 +129,112 @@ def test_get_fund_holdings_parses_info_and_positions():
     assert holdings[0].name == "TESLA INC"
     assert holdings[1].cusip == "50077B207"
     assert holdings[1].pct_val == 1.051275728872
+
+
+# --- Phase 2: primary doc resolved from the filing index (B12) ---
+
+@responses.activate
+def test_get_fund_holdings_uses_renamed_primary_doc_from_index():
+    responses.get(
+        "https://www.sec.gov/Archives/edgar/data/1579982/"
+        "000094040026025084/index.json",
+        json={"directory": {"item": [
+            {"name": "form_nport.xml"},
+            {"name": "index.htm"},
+        ]}},
+    )
+    responses.get(
+        "https://www.sec.gov/Archives/edgar/data/1579982/"
+        "000094040026025084/form_nport.xml",
+        body=SAMPLE_NPORT_XML,
+    )
+    info, holdings = get_fund_holdings(
+        _client(), "1579982", "0000940400-26-025084"
+    )
+    assert info.series_name == "ARK Innovation ETF"
+    assert len(holdings) == 2
+    # The hardcoded primary_doc.xml was never requested.
+    urls = [c.request.url for c in responses.calls]
+    assert not any("primary_doc.xml" in u for u in urls)
+
+
+@responses.activate
+def test_get_fund_holdings_falls_back_to_primary_doc_when_index_has_no_xml():
+    responses.get(
+        "https://www.sec.gov/Archives/edgar/data/1579982/"
+        "000094040026025084/index.json",
+        json={"directory": {"item": [
+            {"name": "index.htm"},
+            {"name": "0000940400-26-025084-index-headers.htm"},
+        ]}},
+    )
+    responses.get(
+        "https://www.sec.gov/Archives/edgar/data/1579982/"
+        "000094040026025084/primary_doc.xml",
+        body=SAMPLE_NPORT_XML,
+    )
+    info, holdings = get_fund_holdings(
+        _client(), "1579982", "0000940400-26-025084"
+    )
+    assert info.series_name == "ARK Innovation ETF"
+    assert len(holdings) == 2
+
+
+def test_nport_cache_round_trip_and_version_invalidation(tmp_path):
+    from howlet.nport import FundHolding, FundInfo, NportCache
+
+    cache = NportCache(cache_dir=tmp_path)
+    info = FundInfo(
+        registrant="ARK ETF Trust",
+        series_name="ARK Innovation ETF",
+        series_id="S000042977",
+        report_period_date="2026-04-30",
+        total_assets=6521307106.71,
+        net_assets=6482466914.09,
+    )
+    holdings = [
+        FundHolding(
+            name="TESLA INC", title="TESLA INC COM", cusip="88160R101",
+            balance=2000000.0, value_usd=500000000.0, pct_val=7.71,
+            asset_cat="EC", issuer_cat="CORP", country="US",
+        )
+    ]
+    assert cache.get_holdings("0000940400-26-025084") is None
+    cache.put_holdings("0000940400-26-025084", info, holdings)
+    cached_info, cached_holdings = cache.get_holdings("0000940400-26-025084")
+    assert cached_info == info
+    assert cached_holdings == holdings
+
+    # A stale (version 1) file is ignored, not served.
+    path = cache._path("0000940400-26-025084")
+    path.write_text(
+        json.dumps({"version": 1, "info": {}, "holdings": []}),
+        encoding="utf-8",
+    )
+    assert cache.get_holdings("0000940400-26-025084") is None
+
+
+@responses.activate
+def test_cached_fund_holdings_hits_network_once(tmp_path):
+    from howlet.nport import NportCache, cached_fund_holdings
+
+    responses.get(
+        "https://www.sec.gov/Archives/edgar/data/1579982/"
+        "000094040026025084/index.json",
+        json={"directory": {"item": [{"name": "primary_doc.xml"}]}},
+    )
+    responses.get(
+        "https://www.sec.gov/Archives/edgar/data/1579982/"
+        "000094040026025084/primary_doc.xml",
+        body=SAMPLE_NPORT_XML,
+    )
+    cache = NportCache(cache_dir=tmp_path)
+    first = cached_fund_holdings(
+        _client(), cache, "1579982", "0000940400-26-025084"
+    )
+    second = cached_fund_holdings(
+        _client(), cache, "1579982", "0000940400-26-025084"
+    )
+    assert first == second
+    # One index fetch + one XML fetch total; the second call was cached.
+    assert len(responses.calls) == 2

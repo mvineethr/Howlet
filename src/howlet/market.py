@@ -23,15 +23,20 @@ from __future__ import annotations
 
 import re
 import time
+from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
 import requests
 
 CHART_URL = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+QUOTE_URL = "https://query1.finance.yahoo.com/v7/finance/quote"
 NASDAQ_INFO_URL = "https://api.nasdaq.com/api/quote/{symbol}/info"
 NASDAQ_HISTORY_URL = "https://api.nasdaq.com/api/quote/{symbol}/historical"
+
+# Symbols per batched quote request (keeps the URL short).
+_BATCH_CHUNK = 25
 
 # Reuse a quote this long before refetching; past it, keep it as the
 # stale-if-error copy. Dashboard polls are slower than this anyway.
@@ -81,35 +86,57 @@ class Quote:
 
     symbol: str
     price: float
-    previous_close: Optional[float] = None
-    currency: Optional[str] = None
-    market_time: Optional[datetime] = None
+    previous_close: float | None = None
+    currency: str | None = None
+    market_time: datetime | None = None
     sparkline: list[float] = field(default_factory=list)
     history_ts: list[int] = field(default_factory=list)
     history_open: list[float] = field(default_factory=list)
     history_high: list[float] = field(default_factory=list)
     history_low: list[float] = field(default_factory=list)
     history_volume: list[float] = field(default_factory=list)
-    long_name: Optional[str] = None
-    exchange: Optional[str] = None
-    instrument_type: Optional[str] = None
-    day_high: Optional[float] = None
-    day_low: Optional[float] = None
-    week52_high: Optional[float] = None
-    week52_low: Optional[float] = None
-    volume: Optional[int] = None
+    long_name: str | None = None
+    exchange: str | None = None
+    instrument_type: str | None = None
+    day_high: float | None = None
+    day_low: float | None = None
+    week52_high: float | None = None
+    week52_low: float | None = None
+    volume: int | None = None
 
     @property
-    def change(self) -> Optional[float]:
+    def change(self) -> float | None:
         if self.previous_close is None:
             return None
         return self.price - self.previous_close
 
     @property
-    def change_pct(self) -> Optional[float]:
+    def change_pct(self) -> float | None:
         if not self.previous_close:
             return None
         return (self.price - self.previous_close) / self.previous_close * 100.0
+
+
+def split_factor_between(splits: list[dict], start: date, end: date) -> float:
+    """Cumulative split factor for splits with start < date <= end.
+
+    Each split is {"date": "YYYY-MM-DD", "numerator": n,
+    "denominator": d} - a 4:1 split is numerator 4, denominator 1, so
+    100 shares before it are 400 after, and prior share counts are
+    multiplied by the factor before comparing. 1.0 when no split
+    applies in the window.
+    """
+    factor = 1.0
+    for split in splits:
+        try:
+            when = date.fromisoformat(split["date"])
+            num = float(split["numerator"])
+            den = float(split["denominator"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if den and start < when <= end:
+            factor *= num / den
+    return factor
 
 
 def _open_stamp(day) -> datetime:
@@ -121,26 +148,45 @@ def _open_stamp(day) -> datetime:
 class YahooMarketClient:
     """Fetch quotes/history from Yahoo Finance's free chart endpoint."""
 
-    def __init__(self, user_agent: Optional[str] = None):
+    def __init__(self, user_agent: str | None = None):
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": user_agent or _DEFAULT_UA})
         self._last_request_at = 0.0
         # (symbol, range, interval) -> (fetched_at monotonic, Quote)
         self._cache: dict[tuple[str, str, str], tuple[float, Quote]] = {}
+        # symbol -> (fetched_at monotonic, Quote) for the batched quote
+        # path. Kept separate from _cache on purpose: batch quotes carry
+        # price fields but no history, and must never be served to a
+        # caller that asked for a history (get_quote / with_history).
+        self._batch_cache: dict[str, tuple[float, Quote]] = {}
 
     def _get(self, url: str, **kwargs) -> requests.Response:
-        resp: Optional[requests.Response] = None
+        """GET with throttle + retry/backoff on 429 and 5xx.
+
+        Transport-level ConnectionErrors are retried too, mirroring
+        `EdgarClient._get`: Yahoo drops stale keep-alive connections
+        just like SEC does, and a retry on a fresh connection almost
+        always succeeds. After exhausting retries, callers see the
+        usual requests exception.
+        """
+        resp: requests.Response | None = None
         for attempt in range(_MAX_RETRIES + 1):
             elapsed = time.monotonic() - self._last_request_at
             if elapsed < _MIN_INTERVAL_SECONDS:
                 time.sleep(_MIN_INTERVAL_SECONDS - elapsed)
-            resp = self.session.get(url, timeout=15, **kwargs)
-            self._last_request_at = time.monotonic()
-
-            if resp.status_code == 429 or resp.status_code >= 500:
+            try:
+                resp = self.session.get(url, timeout=15, **kwargs)
+            except requests.ConnectionError:
+                self._last_request_at = time.monotonic()
                 if attempt < _MAX_RETRIES:
                     time.sleep(_RETRY_BACKOFF_BASE_SECONDS * (2**attempt))
                     continue
+                raise
+            self._last_request_at = time.monotonic()
+
+            if (resp.status_code == 429 or resp.status_code >= 500) and attempt < _MAX_RETRIES:
+                time.sleep(_RETRY_BACKOFF_BASE_SECONDS * (2**attempt))
+                continue
 
             resp.raise_for_status()
             return resp
@@ -150,7 +196,7 @@ class YahooMarketClient:
 
     def get_quote(
         self, symbol: str, range_: str = "1mo", interval: str = "1d"
-    ) -> Optional[Quote]:
+    ) -> Quote | None:
         """Latest quote + close history for one symbol, or None on failure.
 
         Never raises for a bad/unknown symbol - a dashboard row without a
@@ -173,7 +219,7 @@ class YahooMarketClient:
         self._cache[key] = (time.monotonic(), quote)
         return quote
 
-    def _yahoo_quote(self, symbol: str, range_: str, interval: str) -> Optional[Quote]:
+    def _yahoo_quote(self, symbol: str, range_: str, interval: str) -> Quote | None:
         url = CHART_URL.format(symbol=symbol)
         try:
             resp = self._get(url, params={"range": range_, "interval": interval})
@@ -190,14 +236,14 @@ class YahooMarketClient:
             quote.previous_close = quote.sparkline[-2]
         return quote
 
-    def _nasdaq_json(self, url: str, asset_class: str, **params) -> Optional[dict]:
+    def _nasdaq_json(self, url: str, asset_class: str, **params) -> dict | None:
         try:
             body = self._get(url, params={"assetclass": asset_class, **params}).json()
         except (requests.RequestException, ValueError):
             return None
         return body.get("data") if isinstance(body, dict) else None
 
-    def _nasdaq_quote(self, symbol: str, range_: str) -> Optional[Quote]:
+    def _nasdaq_quote(self, symbol: str, range_: str) -> Quote | None:
         """Daily-bar Quote from api.nasdaq.com, or None. Same shape as Yahoo's."""
         days = _NASDAQ_RANGE_DAYS.get(range_)
         if days is None or not _NASDAQ_SYMBOL.match(symbol):
@@ -222,8 +268,8 @@ class YahooMarketClient:
         return self._parse_nasdaq(symbol, info, hist)
 
     @staticmethod
-    def _parse_nasdaq(symbol: str, info: dict, hist: Optional[dict]) -> Optional[Quote]:
-        def num(v) -> Optional[float]:
+    def _parse_nasdaq(symbol: str, info: dict, hist: dict | None) -> Quote | None:
+        def num(v) -> float | None:
             try:
                 return float(str(v).replace("$", "").replace(",", "").replace("%", ""))
             except (TypeError, ValueError):
@@ -235,12 +281,10 @@ class YahooMarketClient:
             return None
         net = num(primary.get("netChange"))
         trade_day = None
-        try:  # "Oct 19, 2026 11:34 AM ET"
+        with suppress(KeyError, TypeError, ValueError):  # "Oct 19, 2026 11:34 AM ET"
             trade_day = datetime.strptime(
                 primary["lastTradeTimestamp"][:12].rstrip(), "%b %d, %Y"
             ).date()
-        except (KeyError, TypeError, ValueError):
-            pass
 
         bars = []  # (date, o, h, l, c, v), oldest first
         rows = ((hist or {}).get("tradesTable") or {}).get("rows") or []
@@ -276,7 +320,7 @@ class YahooMarketClient:
                 )
             )
 
-        def low_high(label: str) -> tuple[Optional[float], Optional[float]]:
+        def low_high(label: str) -> tuple[float | None, float | None]:
             value = ((info.get("keyStats") or {}).get(label) or {}).get("value", "")
             parts = [num(p) for p in str(value).split(" - ")]
             if len(parts) != 2 or None in parts:
@@ -308,25 +352,180 @@ class YahooMarketClient:
             volume=int(volume) if volume is not None else None,
         )
 
-    def get_security(self, symbol: str, range_: str = "6mo") -> Optional[Quote]:
+    def get_splits(self, symbol: str, range_: str = "5y") -> list[dict]:
+        """Stock splits for a symbol from Yahoo's chart events.
+
+        Returns [{"date", "numerator", "denominator"}] oldest first;
+        [] on any failure - splits are decoration on the diff, never a
+        reason to fail it.
+        """
+        url = CHART_URL.format(symbol=symbol)
+        try:
+            resp = self._get(
+                url,
+                params={"range": range_, "interval": "1d", "events": "history"},
+            )
+            data = resp.json()
+        except (requests.RequestException, ValueError):
+            return []
+        return self._parse_splits(data)
+
+    @staticmethod
+    def _parse_splits(data: dict) -> list[dict]:
+        """Split events out of a Yahoo v8 chart payload.
+
+        `events.split` is keyed by unix timestamp, each entry carrying
+        numerator/denominator (a 4:1 split is 4/1) and the split date.
+        """
+        try:
+            events = data["chart"]["result"][0].get("events") or {}
+            raw_splits = events.get("split") or {}
+        except (KeyError, IndexError, TypeError):
+            return []
+        splits = []
+        for ts, entry in raw_splits.items():
+            if not isinstance(entry, dict):
+                continue
+            try:
+                when = datetime.fromtimestamp(int(ts), tz=timezone.utc).date()
+                num = int(entry["numerator"])
+                den = int(entry["denominator"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if den:
+                splits.append(
+                    {
+                        "date": when.isoformat(),
+                        "numerator": num,
+                        "denominator": den,
+                    }
+                )
+        splits.sort(key=lambda s: s["date"])
+        return splits
+
+    def get_security(self, symbol: str, range_: str = "6mo") -> Quote | None:
         """Quote + price history for one symbol, with the bar interval
         picked automatically for the requested range (for chart screens)."""
         interval = RANGE_INTERVALS.get(range_, "1d")
         return self.get_quote(symbol, range_=range_, interval=interval)
 
     def get_quotes(
-        self, symbols: list[str], range_: str = "1mo", interval: str = "1d"
+        self, symbols: list[str], range_: str = "1mo", interval: str = "1d",
+        with_history: bool = False,
     ) -> dict[str, Quote]:
-        """Quotes for many symbols. Symbols that fail are simply absent."""
-        quotes: dict[str, Quote] = {}
+        """Quotes for many symbols. Symbols that fail are simply absent.
+
+        Without history (the default) the symbols go out in ONE Yahoo
+        v7 quote request per 25 symbols instead of one 0.25s-throttled
+        chart request each - a 30-position portfolio used to cost ~7.5s+
+        per load. Fresh per-symbol cache entries are still reused first,
+        and anything the batch misses falls back to the sequential
+        per-symbol path (chart, then Nasdaq for daily bars).
+
+        with_history=True keeps the old behavior (one chart request per
+        symbol, with sparkline/history) for callers that chart the
+        series - quotes_view and markets_view. Batch quotes deliberately
+        carry no history: the v7 endpoint returns price fields only.
+        """
+        seen: dict[str, None] = {}
         for symbol in symbols:
-            quote = self.get_quote(symbol, range_=range_, interval=interval)
-            if quote is not None:
-                quotes[symbol] = quote
+            seen.setdefault(symbol, None)
+        ordered = list(seen)
+        quotes: dict[str, Quote] = {}
+        missing: list[str] = []
+        for symbol in ordered:
+            key = (symbol, range_, interval)
+            cached = self._cache.get(key)
+            if cached and time.monotonic() - cached[0] < _FRESH_SECONDS:
+                quotes[symbol] = cached[1]
+                continue
+            if not with_history:
+                batch_cached = self._batch_cache.get(symbol)
+                if batch_cached and time.monotonic() - batch_cached[0] < _FRESH_SECONDS:
+                    quotes[symbol] = batch_cached[1]
+                    continue
+            missing.append(symbol)
+        if not missing:
+            return quotes
+
+        if with_history:
+            for symbol in missing:
+                quote = self.get_quote(symbol, range_=range_, interval=interval)
+                if quote is not None:
+                    quotes[symbol] = quote
+            return quotes
+
+        try:
+            batched = self._yahoo_batch_quotes(missing)
+        except (requests.RequestException, ValueError):
+            batched = {}
+        for symbol, quote in batched.items():
+            quotes[symbol] = quote
+            self._batch_cache[symbol] = (time.monotonic(), quote)
+        for symbol in missing:
+            if symbol not in quotes:
+                quote = self.get_quote(symbol, range_=range_, interval=interval)
+                if quote is not None:
+                    quotes[symbol] = quote
         return quotes
 
+    def _yahoo_batch_quotes(self, symbols: list[str]) -> dict[str, Quote]:
+        """Price fields for many symbols in one v7 quote request per chunk.
+
+        Returns only the symbols Yahoo answered for. Raises on transport
+        or JSON failure (callers fall back to the per-symbol path).
+        """
+        out: dict[str, Quote] = {}
+        for i in range(0, len(symbols), _BATCH_CHUNK):
+            chunk = symbols[i:i + _BATCH_CHUNK]
+            resp = self._get(QUOTE_URL, params={"symbols": ",".join(chunk)})
+            data = resp.json()
+            results = (data.get("quoteResponse") or {}).get("result") or []
+            for entry in results:
+                quote = self._parse_v7_quote(entry)
+                if quote is not None:
+                    out[quote.symbol] = quote
+        return out
+
     @staticmethod
-    def _parse_chart(symbol: str, data: dict) -> Optional[Quote]:
+    def _parse_v7_quote(entry: dict) -> Quote | None:
+        """One v7 quote entry -> Quote with price fields, no history."""
+        if not isinstance(entry, dict):
+            return None
+        try:
+            symbol = entry["symbol"]
+            price = float(entry["regularMarketPrice"])
+        except (KeyError, TypeError, ValueError):
+            return None
+
+        def num(field):
+            try:
+                return float(entry[field])
+            except (KeyError, TypeError, ValueError):
+                return None
+
+        volume = entry.get("regularMarketVolume")
+        try:
+            volume = int(volume) if volume is not None else None
+        except (TypeError, ValueError):
+            volume = None
+        return Quote(
+            symbol=symbol,
+            price=price,
+            previous_close=num("regularMarketPreviousClose"),
+            currency=entry.get("currency"),
+            long_name=entry.get("longName"),
+            exchange=entry.get("fullExchangeName"),
+            instrument_type=entry.get("quoteType"),
+            day_high=num("regularMarketDayHigh"),
+            day_low=num("regularMarketDayLow"),
+            week52_high=num("fiftyTwoWeekHigh"),
+            week52_low=num("fiftyTwoWeekLow"),
+            volume=volume,
+        )
+
+    @staticmethod
+    def _parse_chart(symbol: str, data: dict) -> Quote | None:
         try:
             result = data["chart"]["result"][0]
             meta = result["meta"]
@@ -356,7 +555,8 @@ class YahooMarketClient:
             raw_lows = quote0.get("low") or [None] * len(raw_closes)
             raw_volumes = quote0.get("volume") or [None] * len(raw_closes)
             for ts, close, open_, high, low, vol in zip(
-                raw_ts, raw_closes, raw_opens, raw_highs, raw_lows, raw_volumes
+                raw_ts, raw_closes, raw_opens, raw_highs, raw_lows, raw_volumes,
+                strict=False,  # ragged Yahoo arrays truncate; degrading beats raising
             ):
                 if close is None:
                     continue
@@ -369,7 +569,7 @@ class YahooMarketClient:
         except (KeyError, IndexError, TypeError):
             pass
 
-        def _num(key: str) -> Optional[float]:
+        def _num(key: str) -> float | None:
             v = meta.get(key)
             try:
                 return float(v) if v is not None else None

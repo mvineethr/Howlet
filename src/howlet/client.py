@@ -10,7 +10,7 @@ Reference: https://www.sec.gov/os/webmaster-faq#developers
 from __future__ import annotations
 
 import time
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 import requests
@@ -66,7 +66,7 @@ class EdgarClient:
         raise_for_status(). After exhausting retries, callers see the
         usual requests exception.
         """
-        resp: Optional[requests.Response] = None
+        resp: requests.Response | None = None
         for attempt in range(_MAX_RETRIES + 1):
             elapsed = time.monotonic() - self._last_request_at
             if elapsed < _MIN_INTERVAL_SECONDS:
@@ -81,16 +81,15 @@ class EdgarClient:
                 raise
             self._last_request_at = time.monotonic()
 
-            if resp.status_code == 429 or resp.status_code >= 500:
-                if attempt < _MAX_RETRIES:
-                    retry_after = resp.headers.get("Retry-After")
-                    wait = (
-                        float(retry_after)
-                        if retry_after and retry_after.isdigit()
-                        else _RETRY_BACKOFF_BASE_SECONDS * (2**attempt)
-                    )
-                    time.sleep(wait)
-                    continue
+            if (resp.status_code == 429 or resp.status_code >= 500) and attempt < _MAX_RETRIES:
+                retry_after = resp.headers.get("Retry-After")
+                wait = (
+                    float(retry_after)
+                    if retry_after and retry_after.isdigit()
+                    else _RETRY_BACKOFF_BASE_SECONDS * (2**attempt)
+                )
+                time.sleep(wait)
+                continue
 
             resp.raise_for_status()
             return resp
@@ -176,7 +175,7 @@ class EdgarClient:
         return self._get(url).json()
 
     def list_filings(
-        self, cik, form_type: Optional[str], limit: int = 8
+        self, cik, form_type: str | None, limit: int = 8
     ) -> list[FilingSummary]:
         """Most recent filings of one form type (or ANY form when
         form_type is None) for a CIK, newest first.
@@ -194,25 +193,35 @@ class EdgarClient:
         filings: list[FilingSummary] = []
         padded_cik = self.pad_cik(cik)
 
+        def _arr(block: dict, key: str, i: int):
+            """Element i of a submissions parallel array, or None when
+            the array is missing/short (SEC's arrays are assumed aligned
+            but a malformed block must skip a row, never raise)."""
+            values = block.get(key) or []
+            return values[i] if i < len(values) else None
+
         def consume(block: dict) -> bool:
             """Append matching filings from one block; True once limit hit."""
-            for i, form in enumerate(block["form"]):
+            for i, form in enumerate(block.get("form") or []):
                 if form_type is not None and form != form_type:
                     continue
-                period_raw = block["reportDate"][i]
+                filing_date_raw = _arr(block, "filingDate", i)
+                if not filing_date_raw:
+                    continue
+                period_raw = _arr(block, "reportDate", i)
                 filings.append(
                     FilingSummary(
                         cik=padded_cik,
-                        accession_number=block["accessionNumber"][i],
+                        accession_number=_arr(block, "accessionNumber", i) or "",
                         filing_date=datetime.strptime(
-                            block["filingDate"][i], "%Y-%m-%d"
+                            filing_date_raw, "%Y-%m-%d"
                         ).date(),
                         period_of_report=(
                             datetime.strptime(period_raw, "%Y-%m-%d").date()
                             if period_raw
                             else None
                         ),
-                        primary_doc=block["primaryDocument"][i],
+                        primary_doc=_arr(block, "primaryDocument", i) or "",
                         form=form,
                     )
                 )
@@ -220,10 +229,11 @@ class EdgarClient:
                     return True
             return False
 
-        if consume(data["filings"]["recent"]):
+        recent = data.get("filings", {}).get("recent", {})
+        if consume(recent):
             return filings
 
-        for page in data["filings"].get("files", []):
+        for page in data.get("filings", {}).get("files", []) or []:
             page_url = SUBMISSIONS_PAGE_URL.format(name=page["name"])
             page_data = self._get(page_url).json()
             if consume(page_data):
@@ -232,8 +242,25 @@ class EdgarClient:
         return filings
 
     def list_13f_filings(self, cik, limit: int = 8) -> list[FilingSummary]:
-        """Most recent 13F-HR filings for a CIK, newest first."""
-        return self.list_filings(cik, "13F-HR", limit=limit)
+        """Most recent 13F-HR filings for a CIK, newest first.
+
+        A 13F-HR/A amendment supersedes the original filing for the
+        same period of report, so when both exist for a period the
+        amendment is returned and the original is dropped.
+        """
+        originals = self.list_filings(cik, "13F-HR", limit=limit)
+        amendments = self.list_filings(cik, "13F-HR/A", limit=limit)
+        by_period: dict[object, FilingSummary] = {}
+        for filing in originals:
+            by_period[filing.period_of_report or filing.accession_number] = filing
+        for filing in amendments:  # amendments win over the original
+            by_period[filing.period_of_report or filing.accession_number] = filing
+        merged = sorted(
+            by_period.values(),
+            key=lambda f: (f.period_of_report or f.filing_date, f.filing_date),
+            reverse=True,
+        )
+        return merged[:limit]
 
     # ------------------------------------------------------------------ #
     # holdings (the actual "information table")
@@ -272,36 +299,71 @@ class EdgarClient:
 
         xml_url = f"{filing.filing_index_url}{xml_name}"
         resp = self._get(xml_url)
-        return self._parse_information_table(resp.content)
+        return self._parse_information_table(
+            resp.content, period_of_report=filing.period_of_report
+        )
 
     @staticmethod
-    def _parse_information_table(xml_bytes: bytes) -> list[Holding]:
+    def _to_int(raw: str | None) -> int:
+        """Parse a 13F integer field tolerantly: commas ("1,234") and
+        decimals ("12.5" -> 12) are accepted; anything unparseable is 0
+        rather than a crash for one malformed row."""
+        if raw is None:
+            return 0
+        cleaned = raw.strip().replace(",", "")
+        if not cleaned:
+            return 0
+        try:
+            return int(cleaned)
+        except ValueError:
+            try:
+                return int(float(cleaned))
+            except ValueError:
+                return 0
+
+    @staticmethod
+    def _parse_information_table(
+        xml_bytes: bytes, period_of_report: date | None = None
+    ) -> list[Holding]:
         """Parse a 13F XML information table into Holding objects.
 
         Namespaces vary slightly across filers/years, so this matches on
         local tag name rather than requiring an exact namespace URI.
+
+        `period_of_report` drives the pre-2023 scaling: the SEC's Jan
+        2023 amendment switched <value> from thousands of dollars to
+        whole dollars, so values from earlier periods are scaled x1000
+        to whole dollars. Without a period (offline parsing) no scaling
+        is applied.
         """
         root = etree.fromstring(xml_bytes)
         holdings: list[Holding] = []
+        # Pre-2023 filings report <value> in thousands of dollars.
+        scale = 1000 if period_of_report and period_of_report < date(2023, 1, 1) else 1
 
         for entry in root.iter():
             if etree.QName(entry).localname != "infoTable":
                 continue
 
-            def text(tag: str) -> Optional[str]:
-                for child in entry.iter():
+            def text(tag: str, _entry=entry) -> str | None:
+                for child in _entry.iter():
                     if etree.QName(child).localname == tag:
                         return child.text
                 return None
 
+            put_call_raw = text("putCall")
+            put_call = (
+                put_call_raw.strip().upper() if put_call_raw and put_call_raw.strip() else None
+            )
             holdings.append(
                 Holding(
                     name_of_issuer=text("nameOfIssuer") or "",
                     cusip=text("cusip") or "",
-                    value_usd=int(text("value") or 0),
-                    shares=int(text("sshPrnamt") or 0),
+                    value_usd=EdgarClient._to_int(text("value")) * scale,
+                    shares=EdgarClient._to_int(text("sshPrnamt")),
                     share_type=text("sshPrnamtType") or "",
                     investment_discretion=text("investmentDiscretion") or "",
+                    put_call=put_call,
                 )
             )
         return holdings

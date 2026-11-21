@@ -42,22 +42,22 @@ class CusipTickerResolver:
 
     def __init__(
         self,
-        cache_dir: Optional[Path] = None,
-        api_key: Optional[str] = None,
-        session: Optional[requests.Session] = None,
+        cache_dir: Path | None = None,
+        api_key: str | None = None,
+        session: requests.Session | None = None,
     ):
         self.cache_dir = Path(cache_dir) if cache_dir else default_cache_dir()
         self.cache_path = self.cache_dir / "cusip_tickers.json"
         self.api_key = api_key or os.environ.get("OPENFIGI_API_KEY")
         self.session = session or requests.Session()
         self._last_request_at = 0.0
-        self._cache: dict[str, Optional[str]] = self._load_cache()
+        self._cache: dict[str, str | None] = self._load_cache()
 
     # ------------------------------------------------------------------ #
     # cache
     # ------------------------------------------------------------------ #
 
-    def _load_cache(self) -> dict[str, Optional[str]]:
+    def _load_cache(self) -> dict[str, str | None]:
         try:
             with open(self.cache_path, encoding="utf-8") as f:
                 data = json.load(f)
@@ -80,7 +80,7 @@ class CusipTickerResolver:
     # resolution
     # ------------------------------------------------------------------ #
 
-    def resolve(self, cusips: list[str]) -> dict[str, Optional[str]]:
+    def resolve(self, cusips: list[str]) -> dict[str, str | None]:
         """Map each CUSIP to a Yahoo-style ticker (or None if unmappable).
 
         Unknown CUSIPs are looked up in batches against OpenFIGI; anything
@@ -117,7 +117,7 @@ class CusipTickerResolver:
         self._cache[cusip] = ticker
         self._save_cache()
 
-    def _resolve_batch(self, cusips: list[str]) -> Optional[dict[str, Optional[str]]]:
+    def _resolve_batch(self, cusips: list[str]) -> dict[str, str | None] | None:
         jobs = [{"idType": "ID_CUSIP", "idValue": c} for c in cusips]
         headers = {"Content-Type": "application/json"}
         if self.api_key:
@@ -158,7 +158,7 @@ class CusipTickerResolver:
     @staticmethod
     def _extract_tickers(
         cusips: list[str], results: list[dict]
-    ) -> dict[str, Optional[str]]:
+    ) -> dict[str, str | None]:
         """Pair OpenFIGI's positional results back up with the input CUSIPs.
 
         A CUSIP can map to many listings; prefer the US composite
@@ -167,8 +167,8 @@ class CusipTickerResolver:
         OpenFIGI tickers use "/" for share classes (BRK/B); Yahoo wants "-"
         (BRK-B), so normalize here since Yahoo is our quote source.
         """
-        mapped: dict[str, Optional[str]] = {}
-        for cusip, result in zip(cusips, results):
+        mapped: dict[str, str | None] = {}
+        for cusip, result in zip(cusips, results, strict=False):  # a short batch just leaves CUSIPs unresolved
             ticker = None
             for entry in result.get("data") or []:
                 raw = entry.get("ticker")

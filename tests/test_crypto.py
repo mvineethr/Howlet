@@ -105,3 +105,21 @@ def test_ttl_cache_prevents_repeat_fetches():
     client.get_markets(limit=2)
     client.get_markets(limit=2)
     assert len(responses.calls) == 1  # second call served from cache
+
+
+# --- Phase 1: cache must not depend on the requested limit (A9) ---
+
+@responses.activate
+def test_get_markets_cache_serves_any_later_limit():
+    responses.get(COINGECKO_URL, json=COINGECKO_JSON)
+    client = CryptoClient()
+
+    source, rows20 = client.get_markets(20)
+    assert len(rows20) == 2  # fixture only has 2 coins
+
+    # A later call with a different limit is served from the same
+    # cached fetch - and would have returned only 20 rows before the
+    # fix when the first call asked for fewer than the second.
+    source, rows2 = client.get_markets(2)
+    assert len(rows2) == 2
+    assert len(responses.calls) == 1  # no second fetch

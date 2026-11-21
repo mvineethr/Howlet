@@ -29,9 +29,9 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 | `fundamentals.py` | SEC XBRL companyfacts: annual 10-K metrics, shares outstanding (dei) |
 | `indicators.py` | Pure-math studies: SMA/EMA/RSI/MACD/Bollinger/ORB |
 | `risk.py` | Pure-math portfolio risk: volatility, max drawdown, Sharpe |
-| `paper.py` | Paper trading (fake money): append-only order ledger in `~/.howlet/paper.json`, fills market/limit/stop orders from real Yahoo bars on every read (`settle`), SPY benchmark |
-| `screener.py` | Screener over a curated universe (SEC fundamentals + chart quotes only) |
-| `news.py` | RSS aggregation: Yahoo/CNBC/CNBC Earnings/MarketWatch/Google News/Seeking Alpha/SEC; per-ticker feeds |
+| `paper.py` | Paper trading (fake money): append-only order ledger in `~/.howlet/paper.json`, fills market/limit/stop orders from real Yahoo bars on every read (`settle`), SPY benchmark; fees/slippage off by default, via `HOWLET_PAPER_FEE_USD` / `HOWLET_PAPER_SLIPPAGE_BPS` |
+| `screener.py` | Screener over a curated universe (SEC fundamentals + chart quotes only); `build_consensus_universe` screens what the tracked 13F managers hold |
+| `news.py` | RSS aggregation: Yahoo/CNBC/CNBC Earnings/MarketWatch/Google News/Seeking Alpha/SEC; per-ticker feeds; per-feed health via `feed_health()` (`/api/news/health`) |
 | `events.py` | Earnings date + analyst mix (Yahoo, crumb-authed), DEF 14A proxies (EDGAR), Fed RSS |
 | `options.py` | Options chains (Yahoo, crumb-authed) - EXPERIMENTAL, de-emphasized per user |
 | `macro.py` | Treasury yield curve (keyless), BLS unregistered tier, FRED (optional key) |
@@ -45,6 +45,15 @@ doc. Tests: `pytest tests/` - all offline/mocked.
 | `dashboard.py` | Flask wiring only; serves the React build (`static/app/index.html`) at `/`, or a plain-text 503 if it was never built. The old vanilla-JS `dashboard.html` / `/classic` was retired 2026-10-24 |
 | `mcp_server.py` | FastMCP stdio server, 30 tools (optional dep: `pip install "howlet[mcp]"`) |
 | `frontend/` | React + Fluent UI v9 app (Vite), the only UI; builds into `static/app/`, served at `/` |
+
+## Skills (dev playbooks)
+
+`skills/` holds 16 Howlet-specific skill docs (see `skills/INDEX.md`) -
+the load-bearing dev playbooks: probe before building, fixtures copy
+reality, cache by immutability, degrade-never-break, silent-failure
+patterns, and the rest. Read the relevant one before starting work in
+an area it covers. (The generic `brain-*` skills under `.claude/skills/`
+are unrelated personal doctrine, not Howlet's - see the audit, H4.)
 
 ## Hard rules
 
@@ -191,7 +200,7 @@ against a current 13F-HR. CI (ruff + pytest, 6 legs) and Docker.
 **Published and public** (verified live 2026-07-25, not from docs):
 `pip install howlet` -> **0.8.0 on PyPI**, the only release; GitHub public
 at `mvineethr/Howlet` with `origin/main` == local at `4c75cf7`; CI green
-on all 6 matrix legs; 145 offline tests pass; ruff clean. Note `git tag`
+on all 6 matrix legs; 309 offline tests pass (1 skipped); ruff clean. Note `git tag`
 is still EMPTY despite the release.
 
 Known-untested: FRED with a real key; pre-2013 SGML filings (should

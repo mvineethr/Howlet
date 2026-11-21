@@ -30,8 +30,8 @@ _cache: tuple[float, list, dict] = (0.0, [], {})
 
 
 def get_fx_matrix(
-    currencies: Optional[list[str]] = None,
-    session: Optional[requests.Session] = None,
+    currencies: list[str] | None = None,
+    session: requests.Session | None = None,
 ) -> dict:
     """Cross-rate matrix for the given currencies (default majors).
 

@@ -57,7 +57,7 @@ def test_macd_histogram_is_macd_minus_signal():
 def test_bollinger_bands_bracket_the_middle_band():
     values = [100, 102, 98, 105, 95, 110, 90, 108, 92, 106, 94, 103, 97, 101, 99, 100, 102, 98, 105, 95, 100]
     bb = bollinger_bands(values, window=20)
-    for upper, mid, lower in zip(bb.upper, bb.mid, bb.lower):
+    for upper, mid, lower in zip(bb.upper, bb.mid, bb.lower, strict=True):  # same window -> same length
         if mid is not None:
             assert lower < mid < upper
 

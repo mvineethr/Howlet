@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { buildTheme, resolveMode, applyCssVars } from "./theme/theme";
 import { useSettings, type PageId } from "./lib/settings";
 import { useRoute, visibleRail } from "./lib/route";
-import Rail from "./shell/Rail";
+import NavTabs from "./shell/NavTabs";
 import TopBar from "./shell/TopBar";
 import CommandBox from "./shell/CommandBox";
 import AlertsBell from "./shell/AlertsBell";
@@ -62,10 +62,8 @@ export default function App() {
     <FluentProvider theme={theme} style={{ height: "100vh", display: "flex", flexDirection: "column", fontSize: TEXT_SCALE[settings.textSize] }}
       data-density={settings.density}>
       <TopBar center={<CommandBox />} right={<AlertsBell />} />
-      <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-        <Rail />
-        <main style={{ flex: 1, overflow: "auto", background: "var(--bg)" }}>{page}</main>
-      </div>
+      <NavTabs />
+      <main style={{ flex: 1, overflow: "auto", background: "var(--bg)" }}>{page}</main>
     </FluentProvider>
   );
 }

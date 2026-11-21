@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from howlet.risk import (
     analyze_portfolio,
     annualized_volatility_pct,
@@ -72,3 +74,39 @@ def test_analyze_portfolio_skips_positions_with_insufficient_history():
 
 def test_analyze_portfolio_returns_none_when_nothing_usable():
     assert analyze_portfolio({"X": (100.0, [1])}) is None
+
+
+# --- Phase 1: timestamp alignment (A6) ---
+
+def test_analyze_portfolio_aligns_histories_on_common_dates():
+    # A trades on days 1-3, B on days 2-4. Index-zipping would pair A's
+    # day-1 close with B's day-2 close; alignment uses only days 2-3.
+    # B's aligned return is (242-220)/220 = 10%, not (242-200)/200 = 21%.
+    holdings = {
+        "A": (100.0, [100.0, 110.0, 121.0], [1, 2, 3]),
+        "B": (100.0, [200.0, 220.0, 242.0], [2, 3, 4]),
+    }
+    result = analyze_portfolio(holdings)
+    assert result is not None
+    by_symbol = {p.symbol: p for p in result.positions}
+    assert by_symbol["B"].return_pct == pytest.approx(10.0)
+    assert by_symbol["A"].return_pct == pytest.approx(10.0)
+
+
+def test_analyze_portfolio_degrades_mismatched_timestamps():
+    # A 3-tuple whose timestamps don't line up with the closes falls
+    # back to the unaligned series instead of dropping the position.
+    holdings = {"A": (100.0, [100.0, 110.0, 121.0], [])}
+    result = analyze_portfolio(holdings)
+    assert result is not None
+    assert result.positions[0].return_pct == pytest.approx(21.0)
+
+
+def test_align_on_timestamps_returns_empty_without_two_common_dates():
+    from howlet.risk import _align_on_timestamps
+
+    stamped = {
+        "A": (100.0, [100.0, 110.0], [1, 2]),
+        "B": (100.0, [200.0, 220.0], [3, 4]),
+    }
+    assert _align_on_timestamps(stamped) == {}

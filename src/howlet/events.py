@@ -18,13 +18,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional
 
+import requests
+
 from .client import EdgarClient
-from .news import NewsItem, _parse_rss
+from .news import NewsItem, _dedupe_and_sort, _parse_rss
 from .yahoo_auth import YahooAuthSession
 
 QUOTE_SUMMARY_URL = "https://query1.finance.yahoo.com/v10/finance/quoteSummary/{symbol}"
 FED_PRESS_RSS = "https://www.federalreserve.gov/feeds/press_all.xml"
 FED_SPEECHES_RSS = "https://www.federalreserve.gov/feeds/speeches.xml"
+
+# One shared session for the Fed RSS feeds (module-level, like every
+# other module's client) instead of a fresh Session per call.
+_fed_session = requests.Session()
 
 # SEC's proxy-statement form - what companies file ahead of an annual
 # shareholder meeting (director elections, exec comp votes, etc).
@@ -34,22 +40,22 @@ PROXY_FORM = "DEF 14A"
 @dataclass
 class EarningsInfo:
     symbol: str
-    next_earnings_date: Optional[str] = None
-    analyst_recommendation: Optional[str] = None  # e.g. "buy", "hold"
-    strong_buy: Optional[int] = None
-    buy: Optional[int] = None
-    hold: Optional[int] = None
-    sell: Optional[int] = None
-    strong_sell: Optional[int] = None
+    next_earnings_date: str | None = None
+    analyst_recommendation: str | None = None  # e.g. "buy", "hold"
+    strong_buy: int | None = None
+    buy: int | None = None
+    hold: int | None = None
+    sell: int | None = None
+    strong_sell: int | None = None
 
 
 class CorporateEventsClient:
     """Earnings/analyst data (Yahoo, crumb-authed) - degrades to None on failure."""
 
-    def __init__(self, auth: Optional[YahooAuthSession] = None):
+    def __init__(self, auth: YahooAuthSession | None = None):
         self.auth = auth or YahooAuthSession()
 
-    def get_earnings_info(self, symbol: str) -> Optional[EarningsInfo]:
+    def get_earnings_info(self, symbol: str) -> EarningsInfo | None:
         url = QUOTE_SUMMARY_URL.format(symbol=symbol)
         resp = self.auth.get(
             url, params={"modules": "calendarEvents,recommendationTrend"}
@@ -86,7 +92,7 @@ def _parse_earnings_info(symbol: str, result: dict) -> EarningsInfo:
     return info
 
 
-def _summarize_recommendation(trend: dict) -> Optional[str]:
+def _summarize_recommendation(trend: dict) -> str | None:
     weights = {"strongBuy": 2, "buy": 1, "hold": 0, "sell": -1, "strongSell": -2}
     total = sum((trend.get(k) or 0) * w for k, w in weights.items())
     count = sum(trend.get(k) or 0 for k in weights)
@@ -109,16 +115,24 @@ def get_shareholder_meetings(client: EdgarClient, cik: str, limit: int = 5) -> l
     that precedes a company's annual shareholder meeting."""
     data = client.get_submissions(cik)
     recent = data.get("filings", {}).get("recent", {})
+    # SEC's parallel arrays are assumed aligned, but a short/missing
+    # array must skip the row, never raise IndexError.
+    forms = recent.get("form") or []
+    filing_dates = recent.get("filingDate") or []
+    accessions = recent.get("accessionNumber") or []
+    primary_docs = recent.get("primaryDocument") or []
     rows = []
-    for i, form in enumerate(recent.get("form", [])):
+    for i, form in enumerate(forms):
         if form != PROXY_FORM:
+            continue
+        if i >= len(filing_dates) or i >= len(accessions) or i >= len(primary_docs):
             continue
         rows.append(
             {
                 "form": form,
-                "filing_date": recent["filingDate"][i],
-                "accession_number": recent["accessionNumber"][i],
-                "primary_doc": recent["primaryDocument"][i],
+                "filing_date": filing_dates[i],
+                "accession_number": accessions[i],
+                "primary_doc": primary_docs[i],
             }
         )
         if len(rows) >= limit:
@@ -128,25 +142,15 @@ def get_shareholder_meetings(client: EdgarClient, cik: str, limit: int = 5) -> l
 
 def get_fed_events(limit: int = 20) -> list[NewsItem]:
     """Recent Fed press releases + speeches (FOMC decisions, statements)."""
-    import requests
-
-    session = requests.Session()
     items: list[NewsItem] = []
     for source, url in (("Fed Press", FED_PRESS_RSS), ("Fed Speeches", FED_SPEECHES_RSS)):
         try:
-            resp = session.get(url, timeout=15)
+            resp = _fed_session.get(url, timeout=15)
             resp.raise_for_status()
         except requests.RequestException:
             continue
         items.extend(_parse_rss(source, resp.content))
 
-    def sort_key(item: NewsItem):
-        if item.published is None:
-            return 0.0
-        try:
-            return item.published.timestamp()
-        except (OSError, OverflowError, ValueError):
-            return 0.0
-
-    items.sort(key=sort_key, reverse=True)
-    return items[:limit]
+    # _dedupe_and_sort is the shared sort (newest first, deduped by link);
+    # don't re-implement it here.
+    return _dedupe_and_sort(items)[:limit]

@@ -52,7 +52,7 @@ def build_server(user_agent: str):
     def search_manager(name: str) -> list[dict]:
         """Search SEC EDGAR for institutional managers/funds by name.
         Returns candidate CIKs to disambiguate (EDGAR names are messy)."""
-        with svc.edgar_lock:
+        with svc.edgar_lock_for("search"):
             return svc.edgar.search_company_cik(name)
 
     @server.tool()
@@ -105,7 +105,7 @@ def build_server(user_agent: str):
 
     @server.tool()
     def search_filing_text(
-        query: str, forms: Optional[list[str]] = None, limit: int = 20
+        query: str, forms: list[str] | None = None, limit: int = 20
     ) -> dict:
         """Full-text search across the CONTENT of all EDGAR filings
         (2001-present, official SEC index). Finds every filing that
@@ -115,7 +115,7 @@ def build_server(user_agent: str):
 
     @server.tool()
     def get_company_filings(
-        symbol: str, form: Optional[str] = None, limit: int = 20
+        symbol: str, form: str | None = None, limit: int = 20
     ) -> dict:
         """A company's recent SEC filings feed (8-K, 10-K/Q, DEF 14A,
         Form 4, ...), newest first, with links. `form` filters to one
@@ -131,7 +131,7 @@ def build_server(user_agent: str):
         return views.fund_view(svc, symbol, top=top)
 
     @server.tool()
-    def get_fx_matrix(currencies: Optional[list[str]] = None) -> dict:
+    def get_fx_matrix(currencies: list[str] | None = None) -> dict:
         """FX cross-rate matrix (matrix[A][B] = units of B per 1 A) from
         the ECB's official daily reference rates via Frankfurter -
         keyless. Default currencies: USD EUR GBP JPY CHF CNY AUD CAD INR."""
@@ -176,7 +176,7 @@ def build_server(user_agent: str):
         return views.facts_view(svc, symbol, years=years)
 
     @server.tool()
-    def get_news(symbols: Optional[list[str]] = None, limit: int = 20) -> list[dict]:
+    def get_news(symbols: list[str] | None = None, limit: int = 20) -> list[dict]:
         """Headlines from free feeds (Yahoo Finance, CNBC, MarketWatch,
         SEC press releases). Pass symbols for company-specific news."""
         return views.news_view(svc, symbols=symbols, limit=limit)
@@ -224,17 +224,20 @@ def build_server(user_agent: str):
 
     @server.tool()
     def screen_securities(
-        universe: Optional[list[str]] = None,
-        pe_max: Optional[float] = None,
-        pe_min: Optional[float] = None,
-        market_cap_min: Optional[float] = None,
-        revenue_growth_min_pct: Optional[float] = None,
-        net_margin_min_pct: Optional[float] = None,
+        universe: list[str] | None = None,
+        universe_source: str | None = None,
+        pe_max: float | None = None,
+        pe_min: float | None = None,
+        market_cap_min: float | None = None,
+        revenue_growth_min_pct: float | None = None,
+        net_margin_min_pct: float | None = None,
     ) -> dict:
         """Screen a ticker universe (default: a curated large-cap list
         across sectors) by P/E, market cap, revenue growth, and net
-        margin - all computed from SEC XBRL fundamentals + free quotes."""
-        filters: dict[str, tuple[Optional[float], Optional[float]]] = {}
+        margin - all computed from SEC XBRL fundamentals + free quotes.
+        Pass universe_source="consensus" to screen what the tracked 13F
+        managers hold instead; an explicit `universe` list wins."""
+        filters: dict[str, tuple[float | None, float | None]] = {}
         if pe_min is not None or pe_max is not None:
             filters["pe_ratio"] = (pe_min, pe_max)
         if market_cap_min is not None:
@@ -243,10 +246,11 @@ def build_server(user_agent: str):
             filters["revenue_growth_pct"] = (revenue_growth_min_pct, None)
         if net_margin_min_pct is not None:
             filters["net_margin_pct"] = (net_margin_min_pct, None)
-        return views.screener_view(svc, universe=universe, filters=filters or None)
+        return views.screener_view(svc, universe=universe, filters=filters or None,
+                                    universe_source=universe_source)
 
     @server.tool()
-    def get_options_chain(symbol: str, expiration: Optional[str] = None) -> dict:
+    def get_options_chain(symbol: str, expiration: str | None = None) -> dict:
         """Calls/puts for one expiration (nearest, if unspecified) -
         strikes, bid/ask, volume, open interest, implied vol. Unofficial
         Yahoo endpoint; raises if unavailable for this symbol right now."""
@@ -275,11 +279,13 @@ def build_server(user_agent: str):
 
     @server.tool()
     def paper_order(symbol: str, side: str, qty: float, type: str = "market",
-                    limit: Optional[float] = None, stop: Optional[float] = None, tif: str = "day") -> dict:
+                    limit: float | None = None, stop: float | None = None, tif: str = "day") -> dict:
         """Place a PAPER (fake money) order for a US stock or ETF. side: buy|sell.
         type: market|limit|stop (limit needs `limit`, stop needs `stop`).
         tif: day|gtc. Market orders fill now while the market is open,
-        otherwise at the next session's open. No shorting or margin."""
+        otherwise at the next session's open. No shorting or margin.
+        Buys are capped at $10,000 per order and $25,000 per day
+        (HOWLET_PAPER_MAX_ORDER_USD / HOWLET_PAPER_MAX_DAILY_USD)."""
         return views.paper_order_view(svc, symbol, side, qty, type=type, limit=limit, stop=stop, tif=tif)
 
     @server.tool()

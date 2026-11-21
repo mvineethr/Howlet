@@ -180,8 +180,10 @@ action (new/added/trimmed/held). Click any symbol to open its stock page.
 - **Smart Money** - Managers, Consensus, Insider buys, Position history,
   Filing search and Funds tabs.
 - **Screener** - P/E, market cap, revenue growth and net margin over a
-  curated large-cap universe (CSV export).
-- **News** - market wire, Fed & policy and earnings feeds.
+  curated large-cap universe (CSV export). `?universe=consensus`
+  screens what the tracked 13F managers hold instead.
+- **News** - market wire, Fed & policy and earnings feeds. `/api/news/health`
+  reports each RSS feed's status (a dead feed is flagged, not silent).
 - **Portfolio** - Watchlists, and Holdings & risk (volatility, max
   drawdown, Sharpe).
 - **Stock page** - Overview, Chart, Financials, Holders, News tabs, plus
@@ -223,7 +225,9 @@ Practise without risking anything: Portfolio → **Paper** gives you a pretend a
 Place market, limit or stop orders from the **Paper trade** button on any stock page. They fill against
 real (delayed) prices, including while Howlet was closed, and the tab shows your return vs simply holding
 the S&P 500. Also available as `howlet paper` (CLI) and the `paper_account` / `paper_order` /
-`paper_cancel` MCP tools. Reset lives in Settings. US stocks and ETFs only; no shorting, margin or fees.
+`paper_cancel` MCP tools. Reset lives in Settings. US stocks and ETFs only; no shorting or margin. Fees and
+slippage are off by default and configurable per account via `HOWLET_PAPER_FEE_USD` (flat $ per fill) and
+`HOWLET_PAPER_SLIPPAGE_BPS` (basis points on the fill price; limit orders never fill past their limit).
 
 ## Plug it into your AI (MCP)
 
@@ -326,9 +330,21 @@ docker run --rm -e EDGAR_USER_AGENT="Your Name your-email@example.com" \
 docker run --rm -e EDGAR_USER_AGENT="Your Name your-email@example.com" \
   -v "$(pwd)/out:/out" howlet:latest holdings buffett --csv /out/buffett.csv
 
-# The dashboard needs the port published and 0.0.0.0 binding inside Docker
+# The dashboard binds loopback (127.0.0.1) by default, so `-p` port
+# publishing does NOT reach it inside Docker (Docker NATs to the
+# container's eth0, not its loopback). Reach it with --network host:
 docker run --rm -e EDGAR_USER_AGENT="Your Name your-email@example.com" \
+  --network host howlet:latest dashboard
+
+# To expose the dashboard on your LAN instead, bind 0.0.0.0 AND set a
+# dashboard token first - without a token anyone on that network can
+# place paper orders and reset the paper account:
+docker run --rm -e EDGAR_USER_AGENT="Your Name your-email@example.com" \
+  -e HOWLET_DASHBOARD_TOKEN="pick-a-long-random-token" \
   -p 8813:8813 howlet:latest dashboard --host 0.0.0.0
+# Mutating paper endpoints then need the token as a header:
+#   curl -X POST -H "X-Howlet-Token: pick-a-long-random-token" ...
+# (or: Authorization: Bearer <token>). Reads never need a token.
 ```
 
 ## Rate limits

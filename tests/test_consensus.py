@@ -58,3 +58,107 @@ def test_consensus_handles_empty_portfolio_without_dividing_by_zero():
     a = _portfolio("alpha", {"AAA": ("APPLE INC", 500)})
     rows = build_consensus_rows([empty, a], min_managers=1)
     assert len(rows) == 1
+
+
+# --- Phase 2: one broken manager must not kill consensus (B5) ---
+
+def test_fetch_latest_portfolios_skips_failing_manager():
+    from datetime import date
+
+    from howlet.consensus import fetch_latest_portfolios
+    from howlet.models import FilingSummary, Holding
+
+    def filing(cik):
+        return FilingSummary(
+            cik=cik,
+            accession_number="0000000000-26-000001",
+            filing_date=date(2026, 5, 15),
+            period_of_report=date(2026, 3, 31),
+            primary_doc="primary.xml",
+        )
+
+    class StubClient:
+        def list_13f_filings(self, cik, limit=1):
+            if cik == "0001234567":
+                raise ConnectionError("SEC hiccup")
+            return [filing(cik)]
+
+        def get_information_table(self, filing):
+            return [
+                Holding(
+                    name_of_issuer="APPLE INC",
+                    cusip="037833100",
+                    value_usd=1000,
+                    shares=5,
+                    share_type="SH",
+                    investment_discretion="SOLE",
+                )
+            ]
+
+    portfolios = fetch_latest_portfolios(
+        StubClient(),
+        {"good": "0001067983", "bad": "0001234567", "alsogood": "0001067984"},
+        cache=None,
+    )
+    assert [p.label for p in portfolios] == ["good", "alsogood"]
+    assert portfolios[0].total_value_usd == 1000
+
+
+def test_fetch_latest_portfolios_skips_manager_whose_holdings_fetch_fails():
+    from datetime import date
+
+    from howlet.consensus import fetch_latest_portfolios
+    from howlet.models import FilingSummary
+
+    class StubClient:
+        def list_13f_filings(self, cik, limit=1):
+            return [
+                FilingSummary(
+                    cik=cik,
+                    accession_number="0000000000-26-000001",
+                    filing_date=date(2026, 5, 15),
+                    period_of_report=date(2026, 3, 31),
+                    primary_doc="primary.xml",
+                )
+            ]
+
+        def get_information_table(self, filing):
+            raise ValueError("malformed information table")
+
+    portfolios = fetch_latest_portfolios(
+        StubClient(), {"broken": "0001067983"}, cache=None
+    )
+    assert portfolios == []
+
+def test_consensus_excludes_option_rows():
+    from howlet.diff import _aggregate_by_cusip
+    from howlet.models import Holding
+
+    def holding(name, cusip, value, shares, put_call=None):
+        return Holding(
+            name_of_issuer=name,
+            cusip=cusip,
+            value_usd=value,
+            shares=shares,
+            share_type="SH",
+            investment_discretion="SOLE",
+            put_call=put_call,
+        )
+
+    # Burry-style: a small long plus a big put on the same CUSIP.
+    raw = [
+        holding("NVIDIA CORP", "67066G104", 100_000, 500),
+        holding("NVIDIA CORP", "67066G104", 9_000_000, 50_000, "PUT"),
+    ]
+    portfolio = ManagerPortfolio(
+        label="burry",
+        cik="0000000001",
+        period_of_report="2026-03-31",
+        positions=_aggregate_by_cusip(raw),
+    )
+    assert portfolio.total_value_usd == 100_000  # put excluded
+
+    rows = build_consensus_rows([portfolio], min_managers=1)
+    assert len(rows) == 1
+    assert rows[0].total_value_usd == 100_000
+    assert rows[0].weights_pct["burry"] == 100.0

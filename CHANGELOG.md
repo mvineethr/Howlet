@@ -4,6 +4,69 @@ All notable changes to Howlet. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow semver
 (pre-1.0: minor bumps may include breaking changes).
 
+## [0.8.1] - 2026-11-20
+
+### Added
+- **`howlet --version`** prints the installed version (0.8.1).
+- **CLI `holdings` shows tickers and prices** alongside issuer/value/
+  shares (CUSIPs resolve through the OpenFIGI disk cache; prices come
+  from one batched Yahoo call). `--csv` gains `ticker` and `price`
+  columns.
+- **Screener consensus universe**: `/api/screener?universe=consensus`
+  (and the MCP `screen_securities` tool's `universe_source="consensus"`)
+  screens what the tracked 13F managers hold, built from their latest
+  filings, instead of the hardcoded ~45-name list. Falls back to the
+  default list when no manager portfolio loads.
+- **Feed-health indicator**: `/api/news/health` reports every RSS feed's
+  status with a last-ok timestamp (`ok`/`failed`/`never`), and `howlet
+  news` prints which feeds are down. A dead feed is now visible instead
+  of indistinguishable from "no news today".
+- **Paper fees/slippage** (off by default): a flat fee per fill
+  (`HOWLET_PAPER_FEE_USD`) and slippage in basis points
+  (`HOWLET_PAPER_SLIPPAGE_BPS`, buys fill higher, sells lower; limit
+  orders never fill past their limit). The account summary reports
+  `fees_paid`; costs survive a reset.
+- **Top-level paper exports**: `from howlet import PaperStore, PaperError`
+  now works.
+- **Frontend CI job**: the `frontend` job runs `npm ci && npm run build
+  && npm test` on every push/PR (the 45 vitest files finally run
+  automatically).
+
+### Changed
+- **13F correctness**: option rows (puts/calls) are parsed and excluded
+  from equity totals instead of counting as long stock; pre-2023
+  `<value>` figures are scaled x1000 (the SEC reported in thousands
+  before 2023); `howlet diff --adjust-splits` adjusts prior shares for
+  stock splits; 13F-HR/A amendments win over the original filing;
+  defensive parsing for malformed 13F/options/BLS/FRED rows.
+- **Risk**: histories align on common dates before portfolio math, and
+  the Sharpe ratio uses the 3-month T-bill yield instead of 0.0.
+- **Robustness**: malformed dashboard params return JSON 400 instead of
+  an HTML 500; the Yahoo crumb retries after a transient failure; one
+  broken manager no longer kills consensus and one bad symbol no longer
+  kills a screen; NPORT resolves its primary doc from the filing index
+  and is disk-cached; the screener cache writes once per run.
+- **Paper trading**: GET endpoints settle in memory only and never save
+  (a dashboard refresh can't fill orders); cross-process file lock +
+  atomic saves; the dashboard binds `127.0.0.1` by default, is served by
+  waitress (not the Flask dev server), runs as a non-root user in Docker,
+  and token auth (`HOWLET_DASHBOARD_TOKEN`) guards paper writes. MCP
+  paper orders are capped at $10,000 per order / $25,000 per day.
+- **Performance**: EDGAR locking is per-manager/per-endpoint instead of
+  one global lock, and quotes are batched (up to 25 symbols per Yahoo
+  request).
+- **Lint**: ruff now checks E/W/I/UP/B/SIM/C4 (was only E4/E7/E9/F);
+  line length (E501) stays unenforced on purpose.
+- **Docs**: the "145 tests" count (stale since the suite grew) now reads
+  the real number; the dashboard's startup banner says HOWLET, not
+  "EDGAR TERMINAL".
+
+### Fixed
+- Duplicate `## [0.8.0]` CHANGELOG sections merged; the two logo files
+  consolidated to the 69KB version; dead `YieldCurvePoint` and
+  `TICKER_FEED_URL` removed; `resolve_cik` deduplicated; CLI `holdings
+  --limit` lists all N recent filings instead of ignoring the option.
+
 ## [0.8.0] - 2026-07-17
 
 ### Added
@@ -51,57 +114,7 @@ All notable changes to Howlet. Format loosely follows
   screener panels.
 - Per-widget resize toggles (wide/tall) and named layout snapshots
   (SAVE/LOAD/DEL) in the dashboard tab bar.
-
-### Changed
-- MKTS stocks view no longer includes the 5 hardcoded crypto symbols
-  (the CRYPTO toggle replaces them with real market-cap data).
-- The top command bar dropped its placeholder hint text.
-- `EdgarClient.list_filings(cik, form_type, limit)` generalizes
-  `list_13f_filings` to any form type (or all forms with `None`);
-  `FilingSummary` gained a `form` field.
-- CI now runs ruff alongside the offline test suite; dashboard HTML has
-  a smoke test.
-
-## [0.8.0] - 2026-07-17
-
-### Added
-- **Insider-buy screening** (`howlet insider-buys AAPL MSFT ...`,
-  `/api/insider-buys`, MCP `screen_insider_buys`, watchlist-scoped
-  INSIDER BUYS dashboard block): open-market Form 4 purchases (code P)
-  across a symbol list, with per-symbol rollups.
-- **N-PORT fund holdings** (`nport.py`; `howlet fund ARKK`,
-  `/api/fund/<symbol>`, MCP `get_fund_holdings`, ETF/FUND HOLDINGS
-  block): what an ETF/mutual fund holds from its latest monthly NPORT-P
-  filing, with the fund's own weights. Unit investment trusts (SPY)
-  error clearly - they don't file NPORT-P.
-- **EDGAR full-text search** (`fulltext.py`; `howlet fts '"phrase"'`,
-  `/api/fulltext`, MCP `search_filing_text`): search the CONTENT of all
-  filings since 2001 via the official efts.sec.gov index.
-- **Company filings feed** (`howlet filings AAPL --form 8-K`,
-  `/api/filings/<symbol>`, MCP `get_company_filings`, SEC FILINGS
-  block): any company's recent filings, newest first, with links.
-- **New-13F-filing alerts**: the dashboard's topbar bell polls
-  `/api/filing-alerts` (MCP: `get_latest_filings`) every 30 minutes and
-  flags tracked managers' brand-new filings; optional desktop
-  notifications; MARK ALL SEEN to acknowledge.
-- **Crypto market data** (`crypto.py`): CoinGecko keyless tier with
-  automatic Coinpaprika fallback and a 60s cache. Powers the MKTS
-  STOCKS/CRYPTO toggle screen and a CRYPTO TOP 20 block.
-- **FX cross-rate matrix** (`fx.py`; `/api/fx`, MCP `get_fx_matrix`,
-  FX CROSS-RATE MATRIX block): ECB daily reference rates via
-  Frankfurter (api.frankfurter.dev), cross rates derived from one call.
-- **SEC rulemaking on ECO** (`regulatory.py`; `/api/regulatory`, MCP
-  `get_sec_rulemaking`): newest SEC rules/notices from the official
-  Federal Register API.
-- **`howlet warm`**: pre-fetches every tracked manager's latest 13F
-  and maps all CUSIPs so the dashboard's first consensus/holders load
-  is instant. Cron-able; safe to re-run.
-- **EXPORT/IMPORT state backup** in the dashboard tab bar: download all
-  terminal state (layouts, watchlists, portfolio, seen-filings) as one
-  JSON file and restore it in any browser.
-- **CSV export buttons** on the portfolio, Q/Q changes, consensus, and
-  screener tables.
-- ruff linting in CI (plus offline HTML smoke tests).
+- Ruff linting in CI (plus offline HTML smoke tests for the dashboard).
 
 ### Changed
 - **Project renamed to Howlet** (a howlet is a small owl). Formerly
@@ -111,11 +124,12 @@ All notable changes to Howlet. Format loosely follows
   `howlet`, cache dir `~/.howlet`, MCP server name `howlet`. The
   dashboard migrates old browser state (edgar13f_*/edgar_* localStorage
   keys) automatically and never overwrites.
-- The MKTS screen's crypto section moved out of the stocks grid and
-  behind a STOCKS/CRYPTO toggle backed by real market-cap data (was 5
-  hardcoded Yahoo symbols mixed into the world grid).
-- The command input's placeholder example text was removed (HELP/F9
-  remains the cheat sheet).
+- MKTS stocks view no longer includes the 5 hardcoded crypto symbols
+  (the CRYPTO toggle replaces them with real market-cap data).
+- The top command bar dropped its placeholder hint text.
+- `EdgarClient.list_filings(cik, form_type, limit)` generalizes
+  `list_13f_filings` to any form type (or all forms with `None`);
+  `FilingSummary` gained a `form` field.
 - MCP server: 19 -> 27 tools.
 
 ## [0.7.0] - 2026-07-17

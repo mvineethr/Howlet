@@ -52,10 +52,10 @@ const COMMANDS: Rows = [
   ["AAPL", "a bare ticker opens its stock page; a bare manager name or CIK opens that 13F portfolio"],
   ["AAPL FA / GP / HDS / OPT", "open that stock's Financials, Chart, Holders or Options tab (DES = Overview, CN = News)"],
   ["buffett  /  buffett PORT  /  1067983", "a manager's 13F portfolio (preset name or raw CIK) on Smart Money"],
-  ["HOME  NEWS  MKTS  EQS  PF  MY  SETTINGS", "jump to a rail page (ECO and WEI also open Markets; WATCH opens Portfolio)"],
+  ["HOME  NEWS  MKTS  EQS  PF  MY  SETTINGS", "jump to a tab (ECO and WEI also open Markets; WATCH opens Portfolio)"],
   ["ALERT AAPL > 350", "set a price alert; use < for a drop. Alerts are checked while Howlet is open"],
   ["HELP  /  ?  /  ABOUT  /  FAQ", "this page"],
-  ["Ctrl+1 ... Ctrl+7", "jump to the rail pages in the order shown on the rail"],
+  ["Ctrl+1 ... Ctrl+7", "jump to the tabs in the order shown in the tab bar"],
   ["Alt+Left", "back to where you came from"],
 ];
 const PAGES: Rows = [
@@ -65,7 +65,7 @@ const PAGES: Rows = [
   ["Screener", "filter a curated large-cap universe by valuation, size, growth and profitability."],
   ["News", "a market wire, Fed and policy, and an earnings feed."],
   ["Portfolio", "your watchlists and personal portfolio, news and earnings dates scoped to them, and portfolio risk."],
-  ["Settings", "appearance, rail order and visibility, defaults, layouts, backup and this help page."],
+  ["Settings", "appearance, tab order and visibility, defaults, layouts, backup and this help page."],
 ];
 const STOCK_TABS: Rows = [
   ["Overview", "quote with day and 52-week ranges, events (earnings, analysts, shareholder meetings), and studies (indicators and opening-range breakout)."],
@@ -138,7 +138,7 @@ export default function HelpPage() {
       </Section>
 
       <Section name="Pages">
-        <Body1>The rail on the left has seven pages (Ctrl+1 to Ctrl+7 in rail order). You can reorder and hide them in Settings.</Body1>
+        <Body1>The tabs across the top hold seven pages (Ctrl+1 to Ctrl+7 in tab order). You can reorder and hide them in Settings.</Body1>
         <Table rows={PAGES} />
         <Subtitle2 as="h3">Stock page tabs</Subtitle2><Table rows={STOCK_TABS} />
       </Section>

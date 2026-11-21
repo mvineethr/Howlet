@@ -52,13 +52,13 @@ class InsiderTransaction:
     insider_name: str
     insider_cik: str
     relationship: str  # e.g. "SVP, GC and Secretary", "Director, 10% owner"
-    transaction_date: Optional[str]  # ISO date string
+    transaction_date: str | None  # ISO date string
     transaction_code: str  # P, S, A, M, F, G, ...
     acquired_disposed: str  # "A" or "D"
     shares: float
-    price_per_share: Optional[float]  # None when the filing footnotes it
-    value_usd: Optional[float]  # shares * price, when price is known
-    shares_owned_after: Optional[float]
+    price_per_share: float | None  # None when the filing footnotes it
+    value_usd: float | None  # shares * price, when price is known
+    shares_owned_after: float | None
     security_title: str
     direct_or_indirect: str  # "D" (direct) or "I" (indirect)
     filing_date: str
@@ -98,7 +98,7 @@ def parse_form4(
                 return child
         return None
 
-    def value_text(el, tag: str) -> Optional[str]:
+    def value_text(el, tag: str) -> str | None:
         """Text of <tag><value>...</value></tag>; None if footnote-only."""
         node = local_find(el, tag)
         if node is None:
@@ -118,8 +118,8 @@ def parse_form4(
         names.append(owner_name.text.strip() if owner_name is not None and owner_name.text else "")
         ciks.append(owner_cik.text.strip() if owner_cik is not None and owner_cik.text else "")
 
-        def flag(tag: str) -> bool:
-            node = local_find(el, tag)
+        def flag(tag: str, _el=el) -> bool:
+            node = local_find(_el, tag)
             return node is not None and (node.text or "").strip().lower() in ("1", "true")
 
         parts = []
@@ -147,8 +147,8 @@ def parse_form4(
         if etree.QName(entry).localname != "nonDerivativeTransaction":
             continue
 
-        def num(tag: str) -> Optional[float]:
-            text = value_text(entry, tag)
+        def num(tag: str, _entry=entry) -> float | None:
+            text = value_text(_entry, tag)
             try:
                 return float(text) if text is not None else None
             except ValueError:

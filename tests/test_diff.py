@@ -76,3 +76,82 @@ def test_diff_holdings_aggregates_multiple_entries_per_cusip_within_a_filing():
     assert change.prior_value_usd == 50_000
     assert change.current_value_usd == 60_000
     assert change.status == "INCREASED"
+
+
+# --- Phase 1 fixes: options excluded from equity, split adjustment ---
+
+def _option_holding(name, cusip, value, shares, put_call):
+    return Holding(
+        name_of_issuer=name,
+        cusip=cusip,
+        value_usd=value,
+        shares=shares,
+        share_type="SH",
+        investment_discretion="SOLE",
+        put_call=put_call,
+    )
+
+
+def test_diff_excludes_option_rows_from_equity_aggregation():
+    from howlet.diff import _aggregate_by_cusip, aggregate_options
+
+    prior = [
+        _holding("NVIDIA CORP", "67066G104", 1_000_000, 5_000),
+        _option_holding("NVIDIA CORP", "67066G104", 9_000_000, 50_000, "PUT"),
+    ]
+    current = [
+        _holding("NVIDIA CORP", "67066G104", 1_200_000, 6_000),
+        _option_holding("NVIDIA CORP", "67066G104", 8_000_000, 40_000, "PUT"),
+    ]
+
+    # Equity aggregation sees only the long shares, not the puts.
+    assert _aggregate_by_cusip(prior)["67066G104"]["value_usd"] == 1_000_000
+    assert _aggregate_by_cusip(prior)["67066G104"]["shares"] == 5_000
+
+    # The option rows live in their own aggregation.
+    opts = aggregate_options(prior)
+    assert opts["67066G104"]["put_call"] == "PUT"
+    assert opts["67066G104"]["value_usd"] == 9_000_000
+    assert opts["67066G104"]["shares"] == 50_000
+
+    changes = {c.cusip: c for c in diff_holdings(prior, current)}
+    assert changes["67066G104"].status == "INCREASED"
+    assert changes["67066G104"].prior_shares == 5_000
+    assert changes["67066G104"].current_shares == 6_000
+    assert changes["67066G104"].prior_value_usd == 1_000_000
+
+
+def test_diff_holdings_applies_split_factors():
+    # 4:1 split between quarters: 100 prior shares are 400 adjusted,
+    # so 400 current shares are UNCHANGED, not a 300-share buy.
+    prior = [_holding("NVIDIA CORP", "67066G104", 40_000, 100)]
+    current = [_holding("NVIDIA CORP", "67066G104", 44_000, 400)]
+
+    (change,) = diff_holdings(prior, current, split_factors={"67066G104": 4.0})
+    assert change.status == "UNCHANGED"
+    assert change.prior_shares == 400
+    assert change.split_adjusted
+
+    # A 2:1 factor on the same filings still shows a real increase.
+    (change,) = diff_holdings(prior, current, split_factors={"67066G104": 2.0})
+    assert change.status == "INCREASED"
+    assert change.prior_shares == 200
+    assert change.shares_change == 200
+
+    # No factors: the old behavior is untouched.
+    (change,) = diff_holdings(prior, current)
+    assert change.status == "INCREASED"
+    assert change.prior_shares == 100
+    assert not change.split_adjusted
+
+
+def test_aggregate_options_flags_mixed_put_and_call():
+    from howlet.diff import aggregate_options
+
+    holdings = [
+        _option_holding("NVIDIA CORP", "67066G104", 1_000, 100, "PUT"),
+        _option_holding("NVIDIA CORP", "67066G104", 2_000, 200, "CALL"),
+    ]
+    opts = aggregate_options(holdings)
+    assert opts["67066G104"]["mixed"]
+    assert opts["67066G104"]["value_usd"] == 3_000

@@ -25,7 +25,7 @@ class ManagerPortfolio:
 
     label: str
     cik: str
-    period_of_report: Optional[str]
+    period_of_report: str | None
     positions: dict[str, dict]  # cusip -> {name_of_issuer, value_usd, shares}
 
     @property
@@ -57,7 +57,7 @@ class ConsensusRow:
 def fetch_latest_portfolios(
     client: EdgarClient,
     managers: dict[str, str],
-    cache: Optional[FilingCache] = None,
+    cache: FilingCache | None = None,
 ) -> list[ManagerPortfolio]:
     """Latest 13F portfolio per manager. Managers with no filings are skipped.
 
@@ -73,10 +73,13 @@ def fetch_latest_portfolios(
             continue
         seen_ciks.add(padded)
 
-        filings = client.list_13f_filings(cik, limit=1)
-        if not filings:
-            continue
-        holdings = cached_information_table(client, cache, filings[0])
+        try:
+            filings = client.list_13f_filings(cik, limit=1)
+            if not filings:
+                continue
+            holdings = cached_information_table(client, cache, filings[0])
+        except Exception:
+            continue  # one broken manager must not kill consensus
         portfolios.append(
             ManagerPortfolio(
                 label=label,
@@ -130,7 +133,7 @@ def build_consensus_rows(
 def build_consensus(
     client: EdgarClient,
     managers: dict[str, str],
-    cache: Optional[FilingCache] = None,
+    cache: FilingCache | None = None,
     min_managers: int = 2,
 ) -> list[ConsensusRow]:
     """End-to-end: fetch every manager's latest 13F and cross-reference."""

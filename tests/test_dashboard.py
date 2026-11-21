@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import threading
 from datetime import date
 from unittest.mock import MagicMock
 
@@ -49,9 +48,15 @@ class FakeServices:
         self.options = MagicMock()
         self.crypto = MagicMock()
         self.screener_cache = None  # bypass disk caching in tests
+        self.nport_cache = None  # bypass disk caching in tests
         self.cache = None  # bypass disk caching in tests
         self.form4_cache = None  # bypass disk caching in tests
-        self.edgar_lock = threading.Lock()
+        from howlet.views import _EdgarLocks
+
+        self.edgar_locks = _EdgarLocks()
+
+    def edgar_lock_for(self, key):
+        return self.edgar_locks.for_key(key)
 
 
 @pytest.fixture
@@ -406,8 +411,17 @@ def test_options_endpoint_404_when_unavailable(api, services):
     assert resp.status_code == 404
 
 
-def test_risk_endpoint_computes_portfolio_metrics(api, services):
+def test_risk_endpoint_computes_portfolio_metrics(api, services, monkeypatch):
+    from howlet import views
     from howlet.market import Quote
+
+    # The risk view wires the 3-month T-bill yield into Sharpe; stub
+    # the Treasury call so this test stays offline and deterministic.
+    monkeypatch.setattr(
+        views,
+        "get_treasury_yield_curve",
+        lambda *args, **kwargs: {"curve": [{"maturity": "3mo", "yield_pct": 4.0}]},
+    )
 
     def fake_get_security(symbol, range_="1y"):
         prices = {"AAPL": 108.0, "MSFT": 210.0}
@@ -422,6 +436,48 @@ def test_risk_endpoint_computes_portfolio_metrics(api, services):
     data = resp.get_json()
     assert len(data["positions"]) == 2
     assert "sharpe_ratio" in data
+
+
+# --- Phase 2: malformed params are JSON 400, not HTML 500 (B1) ---
+
+def test_malformed_int_param_returns_json_400(api):
+    resp = api.get("/api/portfolio/buffett?top=abc")
+    assert resp.status_code == 400
+    assert resp.is_json
+    assert "invalid literal" in resp.get_json()["error"]
+
+
+def test_malformed_float_param_returns_json_400(api):
+    resp = api.get("/api/screener?pe_ratio_min=notanumber")
+    assert resp.status_code == 400
+    assert resp.is_json
+    assert "error" in resp.get_json()
+
+
+# --- Phase 2: risk_view validates holdings (B8) ---
+
+def test_risk_endpoint_rejects_bad_holdings_with_400(api):
+    resp = api.post(
+        "/api/risk",
+        json={"holdings": [
+            {"symbol": "AAPL", "shares": 8},
+            {"symbol": "MSFT"},  # missing shares
+            "not-an-object",
+            {"symbol": "", "shares": 1},
+            {"symbol": "NVDA", "shares": "lots"},
+        ]},
+    )
+    assert resp.status_code == 400
+    error = resp.get_json()["error"]
+    # Every bad row is named, not just the first.
+    assert "row 1" in error and "row 2" in error
+    assert "row 3" in error and "row 4" in error
+
+
+def test_risk_endpoint_rejects_non_list_holdings(api):
+    resp = api.post("/api/risk", json={"holdings": "AAPL"})
+    assert resp.status_code == 400
+    assert "must be a list" in resp.get_json()["error"]
 
 
 def test_news_endpoint_routes_symbols_to_ticker_news(api, services):

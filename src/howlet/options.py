@@ -20,32 +20,32 @@ OPTIONS_URL = "https://query1.finance.yahoo.com/v7/finance/options/{symbol}"
 class OptionContract:
     contract_symbol: str
     strike: float
-    last_price: Optional[float]
-    bid: Optional[float]
-    ask: Optional[float]
-    volume: Optional[int]
-    open_interest: Optional[int]
-    implied_volatility: Optional[float]
+    last_price: float | None
+    bid: float | None
+    ask: float | None
+    volume: int | None
+    open_interest: int | None
+    implied_volatility: float | None
     in_the_money: bool
 
 
 @dataclass
 class OptionChain:
     symbol: str
-    underlying_price: Optional[float]
+    underlying_price: float | None
     expiration_dates: list[str]  # ISO dates, all available expirations
-    selected_expiration: Optional[str]
+    selected_expiration: str | None
     calls: list[OptionContract]
     puts: list[OptionContract]
 
 
 class OptionsClient:
-    def __init__(self, auth: Optional[YahooAuthSession] = None):
+    def __init__(self, auth: YahooAuthSession | None = None):
         self.auth = auth or YahooAuthSession()
 
     def get_option_chain(
-        self, symbol: str, expiration: Optional[str] = None
-    ) -> Optional[OptionChain]:
+        self, symbol: str, expiration: str | None = None
+    ) -> OptionChain | None:
         """Calls/puts for one expiration (nearest, if unspecified).
 
         `expiration` is an ISO date string (e.g. "2026-08-21"); pass one
@@ -75,9 +75,11 @@ class OptionsClient:
 
 
 def _parse_contract(raw: dict) -> OptionContract:
+    # Yahoo occasionally returns "strike": null; raw.get's default only
+    # applies when the key is absent, so `or 0.0` guards the null case.
     return OptionContract(
         contract_symbol=raw.get("contractSymbol", ""),
-        strike=float(raw.get("strike", 0.0)),
+        strike=float(raw.get("strike") or 0.0),
         last_price=raw.get("lastPrice"),
         bid=raw.get("bid"),
         ask=raw.get("ask"),

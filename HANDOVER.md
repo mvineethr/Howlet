@@ -38,7 +38,7 @@ Verified the real state live rather than trusting either file:
 | --- | --- | --- |
 | PyPI publish | `pypi.org/pypi/howlet/json` | **0.8.0 live, only release** |
 | GitHub + CI | `git log origin/main` | `origin/main` == local at `4c75cf7` |
-| Tests | `PYTHONPATH=src pytest tests/` | **145 passed** in 4.4s |
+| Tests | `PYTHONPATH=src pytest tests/` | **309 passed, 1 skipped** in ~53s |
 | Lint | `ruff check .` | All checks passed |
 | Release tag | `git tag` | **EMPTY** - 0.8.0 shipped untagged |
 
@@ -174,7 +174,7 @@ Shipped:
 
 ## Verified live
 
-- 145 offline tests pass; ruff clean; **zero console errors**.
+- 309 offline tests pass (1 skipped); ruff clean; **zero console errors**.
 - Tokens resolving in-page; contrast computed from the live values:
   `--text` 13.56:1, `--cyan` 11.42:1, `--up` 9.59:1, `--amber` 9.16:1,
   `--down` 5.63:1, `--dim` 5.60:1 on panel; `--bg` on amber fill 9.44:1;
@@ -384,7 +384,7 @@ do (accounts).
 
 ## State
 
-145 offline tests green, ruff clean, all 7 new dashboard blocks
+309 offline tests green (1 skipped), ruff clean, all 7 new dashboard blocks
 verified rendering live data in the browser, zero console errors.
 MCP: 27 tools.
 

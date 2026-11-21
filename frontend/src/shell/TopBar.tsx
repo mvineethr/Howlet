@@ -6,7 +6,7 @@ const useStyles = makeStyles({
     height: "44px", display: "flex", alignItems: "center", gap: "12px", padding: "0 12px",
     backgroundColor: tokens.colorNeutralBackground1, borderBottom: `1px solid ${tokens.colorNeutralStroke2}`,
   },
-  brand: { display: "flex", alignItems: "center", gap: "6px", color: tokens.colorBrandForeground1, fontWeight: 600 },
+  brand: { display: "flex", alignItems: "center", gap: "6px", color: tokens.colorNeutralForeground1, fontWeight: 600 },
 });
 
 export default function TopBar({ center, right }: { center?: ReactNode; right?: ReactNode }) {

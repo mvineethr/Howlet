@@ -279,3 +279,181 @@ def test_get_raises_connection_error_after_exhausting_retries(client: EdgarClien
     with pytest.raises(requests.ConnectionError):
         client._get("https://example.test/thing")
     assert len(responses.calls) == 4
+
+
+# --- Phase 0/1 fixes: put/call, pre-2023 scaling, defensive parsing ---
+
+PUT_CALL_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<informationTable xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">
+  <infoTable>
+    <nameOfIssuer>NVIDIA CORP</nameOfIssuer>
+    <cusip>67066G104</cusip>
+    <value>1000000</value>
+    <shsPrnAmt>
+      <sshPrnamt>5000</sshPrnamt>
+      <sshPrnamtType>SH</sshPrnamtType>
+    </shsPrnAmt>
+    <putCall>PUT</putCall>
+    <investmentDiscretion>SOLE</investmentDiscretion>
+  </infoTable>
+  <infoTable>
+    <nameOfIssuer>NVIDIA CORP</nameOfIssuer>
+    <cusip>67066G104</cusip>
+    <value>2000000</value>
+    <shsPrnAmt>
+      <sshPrnamt>10000</sshPrnamt>
+      <sshPrnamtType>SH</sshPrnamtType>
+    </shsPrnAmt>
+    <putCall>CALL</putCall>
+    <investmentDiscretion>SOLE</investmentDiscretion>
+  </infoTable>
+  <infoTable>
+    <nameOfIssuer>APPLE INC</nameOfIssuer>
+    <cusip>037833100</cusip>
+    <value>50000000</value>
+    <shsPrnAmt>
+      <sshPrnamt>300000</sshPrnamt>
+      <sshPrnamtType>SH</sshPrnamtType>
+    </shsPrnAmt>
+    <investmentDiscretion>SOLE</investmentDiscretion>
+  </infoTable>
+</informationTable>
+"""
+
+
+def test_parse_information_table_reads_put_call(client: EdgarClient):
+    holdings = client._parse_information_table(PUT_CALL_XML)
+    assert len(holdings) == 3
+
+    put, call, long = holdings
+    assert put.put_call == "PUT"
+    assert put.is_option
+    assert call.put_call == "CALL"
+    assert call.is_option
+    assert long.put_call is None
+    assert not long.is_option
+
+
+def test_parse_information_table_scales_pre_2023_values(client: EdgarClient):
+    from datetime import date
+
+    # <value> 1,000,000 in a 2022 filing is $1,000,000 thousands.
+    old = client._parse_information_table(
+        PUT_CALL_XML, period_of_report=date(2022, 12, 31)
+    )
+    assert old[0].value_usd == 1_000_000_000
+    assert old[2].value_usd == 50_000_000_000
+
+    # Same XML in a 2023 filing is already whole dollars - no scaling.
+    new = client._parse_information_table(
+        PUT_CALL_XML, period_of_report=date(2023, 3, 31)
+    )
+    assert new[0].value_usd == 1_000_000
+    assert new[2].value_usd == 50_000_000
+
+    # No period (offline parsing) applies no scaling either.
+    assert client._parse_information_table(PUT_CALL_XML)[0].value_usd == 1_000_000
+
+
+def test_parse_information_table_tolerates_malformed_numbers(client: EdgarClient):
+    assert EdgarClient._to_int("1,234") == 1234
+    assert EdgarClient._to_int("12.5") == 12
+    assert EdgarClient._to_int("  42 ") == 42
+    assert EdgarClient._to_int("") == 0
+    assert EdgarClient._to_int(None) == 0
+    assert EdgarClient._to_int("not-a-number") == 0
+
+    xml = b"""<?xml version="1.0" encoding="UTF-8"?>
+    <informationTable>
+      <infoTable>
+        <nameOfIssuer>WEIRD CO</nameOfIssuer>
+        <cusip>123456789</cusip>
+        <value>1,234</value>
+        <shsPrnAmt><sshPrnamt>12.5</sshPrnamt><sshPrnamtType>SH</sshPrnamtType></shsPrnAmt>
+        <investmentDiscretion>SOLE</investmentDiscretion>
+      </infoTable>
+    </informationTable>
+    """
+    holdings = client._parse_information_table(xml)
+    assert holdings[0].value_usd == 1234
+    assert holdings[0].shares == 12
+
+
+@responses.activate
+def test_list_13f_filings_prefers_amendment_over_original(client: EdgarClient):
+    # Same period reported twice: the original 13F-HR and a later
+    # 13F-HR/A. Only the amendment may be returned for that period.
+    fake_submissions = {
+        "filings": {
+            "recent": {
+                "form": ["13F-HR", "13F-HR/A", "13F-HR"],
+                "accessionNumber": [
+                    "0001-23-000001",
+                    "0001-23-000002",
+                    "0001-23-000003",
+                ],
+                "filingDate": ["2026-05-15", "2026-06-01", "2026-02-14"],
+                "reportDate": ["2026-03-31", "2026-03-31", "2025-12-31"],
+                "primaryDocument": ["doc1.htm", "doc2.htm", "doc3.htm"],
+            }
+        }
+    }
+    responses.add(
+        responses.GET,
+        "https://data.sec.gov/submissions/CIK0001067983.json",
+        json=fake_submissions,
+        status=200,
+    )
+
+    filings = client.list_13f_filings("1067983", limit=8)
+
+    assert len(filings) == 2  # one per period, not three
+    assert filings[0].accession_number == "0001-23-000002"  # the amendment
+    assert filings[0].form == "13F-HR/A"
+    assert filings[1].accession_number == "0001-23-000003"
+
+
+@responses.activate
+def test_list_filings_skips_rows_with_short_parallel_arrays(client: EdgarClient):
+    # reportDate is shorter than form: the second row has no period
+    # (None is a valid state) and must be kept, not raise IndexError.
+    # A row missing its filingDate has no usable identity and is skipped.
+    fake_submissions = {
+        "filings": {
+            "recent": {
+                "form": ["13F-HR", "13F-HR", "13F-HR"],
+                "accessionNumber": [
+                    "0001-23-000001",
+                    "0001-23-000002",
+                    "0001-23-000003",
+                ],
+                "filingDate": ["2026-05-15", "2026-02-14"],
+                "reportDate": ["2026-03-31"],
+                "primaryDocument": ["doc1.htm", "doc2.htm", "doc3.htm"],
+            }
+        }
+    }
+    responses.add(
+        responses.GET,
+        "https://data.sec.gov/submissions/CIK0001067983.json",
+        json=fake_submissions,
+        status=200,
+    )
+
+    filings = client.list_13f_filings("1067983", limit=8)
+
+    assert len(filings) == 2
+    assert filings[0].accession_number == "0001-23-000001"
+    assert filings[1].accession_number == "0001-23-000002"
+    assert filings[1].period_of_report is None  # short reportDate array
+
+
+@responses.activate
+def test_list_filings_tolerates_missing_filings_key(client: EdgarClient):
+    responses.add(
+        responses.GET,
+        "https://data.sec.gov/submissions/CIK0001067983.json",
+        json={},
+        status=200,
+    )
+    assert client.list_13f_filings("1067983", limit=8) == []

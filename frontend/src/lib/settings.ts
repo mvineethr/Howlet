@@ -29,7 +29,9 @@ export const REFRESH_MS: Record<Settings["refresh"], number> = { fast: 15_000, n
 
 export const DEFAULT_SETTINGS: Settings = {
   version: 1,
-  themeMode: "system",
+  // Light by default, matching the Trading Research Space's calm look.
+  // Stored settings are untouched; System / Dark are still one click away.
+  themeMode: "light",
   accent: AMBER,
   density: "comfortable",
   textSize: "medium",

@@ -77,18 +77,38 @@ def _classify_amendment_cover(text: str) -> str | None:
 def _merge_holdings(base: list[Holding], added: list[Holding]) -> list[Holding]:
     """Union of two holding lists for an adds-new-holdings amendment.
 
-    A row already present in the base (same CUSIP, class, put/call and
-    discretion) is replaced by the amendment's row - the amendment is
-    the newer information; anything else is appended. This keeps the
-    merged table free of double-counted rows.
+    An added row replaces the base row it updates - the amendment is
+    the newer information - and anything else is appended. Rows are
+    matched on CUSIP, class, put/call and discretion; when several
+    base rows share those, voting authority disambiguates them. The
+    match uses the voting *pattern* (which of sole/shared/none are
+    nonzero), not the vote counts: the same position with updated
+    share counts has different counts but the same pattern. One
+    filing can list the same CUSIP several times with different
+    voting splits, and collapsing those rows would understate shares
+    and value. When no single row matches, the added row is appended
+    rather than deleting a row it cannot be identified with.
     """
-    def key(h: Holding) -> tuple:
+    def base_key(h: Holding) -> tuple:
         return (h.cusip, h.share_type, h.put_call, h.investment_discretion)
 
-    merged = {key(h): h for h in base}
+    def voting_pattern(h: Holding) -> tuple:
+        return (h.voting_sole > 0, h.voting_shared > 0, h.voting_none > 0)
+
+    merged = list(base)
     for h in added:
-        merged[key(h)] = h
-    return list(merged.values())
+        same = [i for i, b in enumerate(merged) if base_key(b) == base_key(h)]
+        if len(same) == 1:
+            merged[same[0]] = h
+            continue
+        if len(same) > 1:
+            match = [i for i in same
+                     if voting_pattern(merged[i]) == voting_pattern(h)]
+            if len(match) == 1:
+                merged[match[0]] = h
+                continue
+        merged.append(h)
+    return merged
 
 
 class EdgarClient:
@@ -501,6 +521,9 @@ class EdgarClient:
                     share_type=text("sshPrnamtType") or "",
                     investment_discretion=text("investmentDiscretion") or "",
                     put_call=put_call,
+                    voting_sole=EdgarClient._to_int(text("Sole")),
+                    voting_shared=EdgarClient._to_int(text("Shared")),
+                    voting_none=EdgarClient._to_int(text("None")),
                 )
             )
         return holdings

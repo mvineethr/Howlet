@@ -14,10 +14,11 @@ from .market import Quote, YahooMarketClient
 from .models import FilingSummary, Holding, HoldingChange
 from .news import NewsClient, NewsItem
 from .options import OptionsClient
+from .paper import PaperError, PaperStore
 from .tickers import CusipTickerResolver
 from .views import Services
 
-__version__ = "0.8.0"
+__version__ = "0.8.1"
 __all__ = [
     "CorporateEventsClient",
     "CusipTickerResolver",
@@ -30,6 +31,8 @@ __all__ = [
     "NewsClient",
     "NewsItem",
     "OptionsClient",
+    "PaperError",
+    "PaperStore",
     "Quote",
     "Services",
     "YahooMarketClient",

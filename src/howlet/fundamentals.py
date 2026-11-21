@@ -15,13 +15,21 @@ metrics come back as None rather than failing the whole view.
 
 from __future__ import annotations
 
+import json
+import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from .client import EdgarClient
+from .tickers import default_cache_dir
 
 TICKER_MAP_URL = "https://www.sec.gov/files/company_tickers.json"
 COMPANY_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
+
+# SEC's ticker file changes slowly (new listings); a day-old disk copy
+# is fine and avoids re-downloading it on every process start.
+_TICKER_MAP_TTL_SECONDS = 24 * 3600
 
 # metric label -> candidate us-gaap concepts, in preference order.
 _CONCEPTS: dict[str, list[str]] = {
@@ -79,22 +87,25 @@ class FiscalYear:
 
     fiscal_year: int
     end_date: str
-    revenue: Optional[float] = None
-    net_income: Optional[float] = None
-    eps_diluted: Optional[float] = None
-    total_assets: Optional[float] = None
-    total_liabilities: Optional[float] = None
-    stockholders_equity: Optional[float] = None
-    operating_cash_flow: Optional[float] = None
+    revenue: float | None = None
+    net_income: float | None = None
+    eps_diluted: float | None = None
+    total_assets: float | None = None
+    total_liabilities: float | None = None
+    stockholders_equity: float | None = None
+    operating_cash_flow: float | None = None
 
 
 class FundamentalsClient:
     """Ticker -> CIK -> annual headline financials, via SEC only."""
 
-    def __init__(self, edgar: EdgarClient):
+    def __init__(self, edgar: EdgarClient, cache_dir: Path | None = None):
         self.edgar = edgar
-        self._ticker_map: Optional[dict[str, dict]] = None
-        self._name_index: Optional[dict[str, str]] = None
+        self._ticker_map: dict[str, dict] | None = None
+        self._name_index: dict[str, str] | None = None
+        self._ticker_map_path = (
+            Path(cache_dir) if cache_dir else default_cache_dir()
+        ) / "ticker_map.json"
 
     # ------------------------------------------------------------------ #
     # ticker <-> CIK
@@ -104,16 +115,46 @@ class FundamentalsClient:
         """SEC's ticker file, keyed by upper-cased ticker.
 
         Also useful as a keyless fallback for CUSIP resolution failures
-        (match by name), so it's cached for the client's lifetime.
+        (match by name), so it's cached for the client's lifetime - and
+        on disk for a day, so every process start doesn't re-download it.
         """
-        if self._ticker_map is None:
+        if self._ticker_map is not None:
+            return self._ticker_map
+        raw = self._load_ticker_map_disk()
+        if raw is None:
             raw = self.edgar._get(TICKER_MAP_URL).json()
-            self._ticker_map = {
-                entry["ticker"].upper(): entry for entry in raw.values()
-            }
+            self._save_ticker_map_disk(raw)
+        self._ticker_map = {
+            entry["ticker"].upper(): entry for entry in raw.values()
+        }
         return self._ticker_map
 
-    def ticker_to_cik(self, ticker: str) -> Optional[str]:
+    def _load_ticker_map_disk(self) -> dict | None:
+        """Disk-cached ticker file, or None when absent/stale/corrupt."""
+        try:
+            with open(self._ticker_map_path, encoding="utf-8") as f:
+                payload = json.load(f)
+            if not isinstance(payload, dict):
+                return None
+            fetched_at = payload.get("fetched_at", 0)
+            if time.time() - fetched_at > _TICKER_MAP_TTL_SECONDS:
+                return None
+            entries = payload.get("entries")
+            return entries if isinstance(entries, dict) else None
+        except (OSError, ValueError):
+            return None
+
+    def _save_ticker_map_disk(self, raw: dict) -> None:
+        try:
+            self._ticker_map_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self._ticker_map_path, "w", encoding="utf-8") as f:
+                json.dump(
+                    {"fetched_at": time.time(), "entries": raw}, f
+                )
+        except OSError:
+            pass  # disk cache is an optimization, never a failure
+
+    def ticker_to_cik(self, ticker: str) -> str | None:
         """CIK for a US-listed ticker, or None if SEC doesn't list it.
 
         Yahoo-style share classes (BRK-B) are normalized to SEC's dash
@@ -122,11 +163,11 @@ class FundamentalsClient:
         entry = self._load_ticker_map().get(ticker.upper())
         return str(entry["cik_str"]) if entry else None
 
-    def company_name(self, ticker: str) -> Optional[str]:
+    def company_name(self, ticker: str) -> str | None:
         entry = self._load_ticker_map().get(ticker.upper())
         return entry["title"] if entry else None
 
-    def name_to_ticker(self, name: str) -> Optional[str]:
+    def name_to_ticker(self, name: str) -> str | None:
         """Ticker whose SEC title matches a (13F-style) company name.
 
         The keyless fallback for CUSIPs OpenFIGI can't map (e.g.
@@ -164,7 +205,7 @@ class FundamentalsClient:
         facts = self.get_company_facts(cik)
         return extract_annual_metrics(facts, years=years)
 
-    def shares_outstanding(self, ticker: str) -> Optional[float]:
+    def shares_outstanding(self, ticker: str) -> float | None:
         """Most recently reported shares outstanding, or None if unknown."""
         cik = self.ticker_to_cik(ticker)
         if cik is None:
@@ -195,7 +236,7 @@ def extract_annual_metrics(facts: dict, years: int = 5) -> list[FiscalYear]:
     return ordered[:years]
 
 
-def extract_shares_outstanding(facts: dict) -> Optional[float]:
+def extract_shares_outstanding(facts: dict) -> float | None:
     """Latest EntityCommonStockSharesOutstanding value across any form.
 
     This is a cover-page snapshot (point-in-time, not a duration), so
@@ -210,8 +251,12 @@ def extract_shares_outstanding(facts: dict) -> Optional[float]:
             end, val = e.get("end"), e.get("val")
             if end is None or val is None:
                 continue
+            try:
+                val_f = float(val)
+            except (TypeError, ValueError):
+                continue
             if best is None or end > best[0]:
-                best = (end, float(val))
+                best = (end, val_f)
         if best is not None:
             return best[1]
     return None
@@ -235,27 +280,39 @@ def _annual_series(
 
     Annual figures are the FY entries reported on 10-K forms. When a year
     appears multiple times (restatements in later filings), the entry
-    with the latest `end` + `filed` wins.
+    with the latest `end` + `filed` wins; a 10-K/A amendment beats a
+    10-K for the same year, so a restated year is read from the
+    amendment, not the superseded filing.
     """
     for concept in concepts:
         units = gaap.get(concept, {}).get("units", {})
         # Monetary concepts use "USD"; EPS uses "USD/shares".
         entries = units.get("USD") or units.get("USD/shares") or []
-        series: dict[int, tuple[str, str, float]] = {}
+        series: dict[int, tuple[str, str, int, float]] = {}
         for e in entries:
-            if e.get("form") != "10-K" or e.get("fp") != "FY":
+            form = e.get("form")
+            if form not in ("10-K", "10-K/A") or e.get("fp") != "FY":
                 continue
             fy, end, filed, val = e.get("fy"), e.get("end"), e.get("filed", ""), e.get("val")
             if fy is None or end is None or val is None:
+                continue
+            try:
+                val_f = float(val)
+            except (TypeError, ValueError):
                 continue
             # Duration concepts (revenue etc.) also carry quarterly
             # comparatives inside 10-Ks; only keep ~full-year spans.
             start = e.get("start")
             if start is not None and not _spans_a_year(start, end):
                 continue
-            key = (end, filed)
-            if fy not in series or key > (series[fy][0], series[fy][1]):
-                series[fy] = (end, filed, float(val))
+            # Amendment (1) outranks original (0) for the same year.
+            key = (end, filed, 1 if form == "10-K/A" else 0)
+            if fy not in series or key > (
+                series[fy][0],
+                series[fy][1],
+                series[fy][2],
+            ):
+                series[fy] = (end, filed, key[2], val_f)
         if series:
-            return {fy: (end, val) for fy, (end, _filed, val) in series.items()}
+            return {fy: (end, val) for fy, (end, _filed, _amend, val) in series.items()}
     return {}

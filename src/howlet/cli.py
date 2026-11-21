@@ -26,14 +26,15 @@ import click
 from rich.console import Console
 from rich.table import Table
 
-from . import views
+from . import __version__, views
 from .cache import FilingCache, cached_information_table
 from .client import EdgarClient
 from .consensus import build_consensus_rows, fetch_latest_portfolios
 from .diff import STATUS_ORDER, diff_holdings
-from .market import YahooMarketClient
+from .market import YahooMarketClient, split_factor_between
 from .paper import PaperError, PaperStore
 from .presets import FAMOUS_INVESTORS
+from .tickers import CusipTickerResolver
 
 console = Console()
 
@@ -59,14 +60,16 @@ def _get_user_agent() -> str:
 
 
 def _resolve_cik(identifier: str) -> str:
-    """Accept either a raw CIK or one of the FAMOUS_INVESTORS shortcuts."""
-    key = identifier.strip().lower()
-    if key in FAMOUS_INVESTORS:
-        return FAMOUS_INVESTORS[key]
-    return identifier.strip()
+    """Accept either a raw CIK or one of the FAMOUS_INVESTORS shortcuts.
+
+    Single implementation lives in views.resolve_cik; this is kept as a
+    thin alias so existing call sites don't change.
+    """
+    return views.resolve_cik(identifier)
 
 
 @click.group()
+@click.version_option(__version__, prog_name="howlet")
 def main():
     """Howlet - free CLI for SEC 13F institutional holdings data."""
 
@@ -94,10 +97,13 @@ def search(name: str):
 
 @main.command()
 @click.argument("identifier")
-@click.option("--limit", default=1, show_default=True, help="How many recent 13F-HR filings to consider")
+@click.option("--limit", default=1, show_default=True, help="How many recent 13F-HR filings to list (holdings shown for the latest)")
 @click.option("--csv", "csv_path", default=None, help="Write holdings to this CSV path instead of printing")
 def holdings(identifier: str, limit: int, csv_path: str | None):
     """Show the latest 13F holdings for a CIK or a preset name.
+
+    Lists the --limit most recent 13F-HR filings, then shows the
+    holdings of the latest one.
 
     IDENTIFIER can be a raw CIK (e.g. 1067983) or a shortcut name from
     presets.py (e.g. buffett, burry, ackman, icahn).
@@ -110,6 +116,19 @@ def holdings(identifier: str, limit: int, csv_path: str | None):
         console.print(f"No 13F-HR filings found for CIK {cik}.")
         return
 
+    if len(filings) > 1:
+        table = Table(title=f"Recent 13F-HR filings - CIK {cik}")
+        table.add_column("Period of report")
+        table.add_column("Filed")
+        table.add_column("Accession")
+        for f in filings:
+            table.add_row(
+                str(f.period_of_report or "?"),
+                str(f.filing_date),
+                f.accession_number,
+            )
+        console.print(table)
+
     latest = filings[0]
     console.print(
         f"[bold]Period of report:[/bold] {latest.period_of_report}  "
@@ -119,34 +138,97 @@ def holdings(identifier: str, limit: int, csv_path: str | None):
     rows = cached_information_table(client, FilingCache(), latest)
     rows.sort(key=lambda h: h.value_usd, reverse=True)
 
+    # Tickers + prices, like portfolio_view: CUSIPs resolve through the
+    # OpenFIGI disk cache (no network when already mapped) and prices
+    # come from batched Yahoo calls. Unresolved/missing reads "-".
+    tickers = CusipTickerResolver().resolve([h.cusip for h in rows])
+
     if csv_path:
+        symbols = sorted({t for t in tickers.values() if t})
+        quotes = YahooMarketClient().get_quotes(symbols) if symbols else {}
         with open(csv_path, "w", newline="") as f:
             writer = csv.writer(f)
-            writer.writerow(["issuer", "cusip", "value_usd", "shares", "share_type"])
+            writer.writerow(["issuer", "cusip", "ticker", "value_usd", "shares", "share_type", "price"])
             for h in rows:
+                ticker = tickers.get(h.cusip) or ""
+                q = quotes.get(ticker) if ticker else None
                 writer.writerow(
-                    [h.name_of_issuer, h.cusip, h.value_usd, h.shares, h.share_type]
+                    [h.name_of_issuer, h.cusip, ticker, h.value_usd, h.shares, h.share_type,
+                     q.price if q and q.price is not None else ""]
                 )
         console.print(f"Wrote {len(rows)} holdings to {csv_path}")
         return
 
+    top = rows[:25]
+    symbols = sorted({tickers.get(h.cusip) for h in top} - {None})
+    quotes = YahooMarketClient().get_quotes(symbols) if symbols else {}
     table = Table(title=f"Top holdings - CIK {cik}")
     table.add_column("Issuer")
+    table.add_column("Ticker")
     table.add_column("Value ($)", justify="right")
     table.add_column("Shares", justify="right")
-    for h in rows[:25]:
-        table.add_row(h.name_of_issuer, f"{h.value_usd:,}", f"{h.shares:,}")
+    table.add_column("Price ($)", justify="right")
+    for h in top:
+        ticker = tickers.get(h.cusip) or "-"
+        q = quotes.get(ticker) if ticker != "-" else None
+        table.add_row(
+            h.name_of_issuer, ticker, f"{h.value_usd:,}", f"{h.shares:,}",
+            f"{q.price:,.2f}" if q and q.price is not None else "-",
+        )
     console.print(table)
 
     if len(rows) > 25:
         console.print(f"... and {len(rows) - 25} more positions. Use --csv to export all of them.")
 
 
+def _split_factors_for_diff(
+    prior_holdings, current_holdings, prior_filing, current_filing
+) -> dict[str, float]:
+    """{cusip: split factor} for CUSIPs whose ticker split between the
+    two filing periods.
+
+    Tickers come from the OpenFIGI disk cache (no network when already
+    resolved); splits come from Yahoo chart events. A CUSIP that can't
+    be resolved, or has no split in the window, is simply absent - the
+    diff then behaves exactly as before.
+    """
+    cusips = sorted(
+        {h.cusip for h in prior_holdings} & {h.cusip for h in current_holdings}
+    )
+    if (
+        not cusips
+        or prior_filing.period_of_report is None
+        or current_filing.period_of_report is None
+    ):
+        return {}
+    tickers = CusipTickerResolver().resolve(cusips)
+    market = YahooMarketClient()
+    factors: dict[str, float] = {}
+    for cusip in cusips:
+        ticker = tickers.get(cusip)
+        if not ticker:
+            continue
+        factor = split_factor_between(
+            market.get_splits(ticker),
+            prior_filing.period_of_report,
+            current_filing.period_of_report,
+        )
+        if factor != 1.0:
+            factors[cusip] = factor
+            console.print(
+                f"[dim]Split-adjusted {ticker}: x{factor:g} between "
+                f"{prior_filing.period_of_report} and "
+                f"{current_filing.period_of_report}[/dim]"
+            )
+    return factors
+
+
 @main.command()
 @click.argument("identifier")
 @click.option("--csv", "csv_path", default=None, help="Write the full diff to this CSV path instead of printing")
 @click.option("--show-unchanged", is_flag=True, default=False, help="Include positions with no share-count change")
-def diff(identifier: str, csv_path: str | None, show_unchanged: bool):
+@click.option("--adjust-splits", is_flag=True, default=False, help="Adjust prior share counts for stock splits between the quarters (Yahoo corporate actions)")
+def diff(identifier: str, csv_path: str | None, show_unchanged: bool, adjust_splits: bool):
     """Show what changed between a manager's two most recent 13F-HR filings.
 
     Compares share counts and reported value by CUSIP, aggregating
@@ -171,7 +253,15 @@ def diff(identifier: str, csv_path: str | None, show_unchanged: bool):
     cache = FilingCache()
     prior_holdings = cached_information_table(client, cache, prior_filing)
     current_holdings = cached_information_table(client, cache, current_filing)
-    changes = diff_holdings(prior_holdings, current_holdings)
+
+    split_factors = None
+    if adjust_splits:
+        split_factors = _split_factors_for_diff(
+            prior_holdings, current_holdings, prior_filing, current_filing
+        )
+    changes = diff_holdings(
+        prior_holdings, current_holdings, split_factors=split_factors
+    )
 
     if not show_unchanged:
         changes = [c for c in changes if c.status != "UNCHANGED"]
@@ -191,6 +281,7 @@ def diff(identifier: str, csv_path: str | None, show_unchanged: bool):
                     "prior_shares",
                     "current_shares",
                     "shares_change",
+                    "split_adjusted",
                 ]
             )
             for c in changes:
@@ -205,6 +296,7 @@ def diff(identifier: str, csv_path: str | None, show_unchanged: bool):
                         c.prior_shares,
                         c.current_shares,
                         c.shares_change,
+                        c.split_adjusted,
                     ]
                 )
         console.print(f"Wrote {len(changes)} changes to {csv_path}")
@@ -217,13 +309,19 @@ def diff(identifier: str, csv_path: str | None, show_unchanged: bool):
     table.add_column("Shares change", justify="right")
     for c in changes[:40]:
         color = _STATUS_COLORS.get(c.status, "white")
+        status = f"[{color}]{c.status}[/{color}]"
+        if c.split_adjusted:
+            status += " *"
         table.add_row(
             c.name_of_issuer,
-            f"[{color}]{c.status}[/{color}]",
+            status,
             f"{c.value_change_usd:+,}",
             f"{c.shares_change:+,}",
         )
     console.print(table)
+
+    if any(c.split_adjusted for c in changes):
+        console.print("[dim]* prior shares split-adjusted between the quarters[/dim]")
 
     if len(changes) > 40:
         console.print(f"... and {len(changes) - 40} more changes. Use --csv to export all of them.")
@@ -280,6 +378,14 @@ def news(symbols: tuple[str, ...], limit: int):
         items = client.get_ticker_news(list(symbols), limit=limit)
     else:
         items = client.get_market_news(limit=limit)
+
+    down = [f for f in client.feed_health() if f["status"] == "failed"]
+    if down:
+        console.print(
+            "[dim]Feeds down: "
+            + ", ".join(f"{f['source']} ({f['kind']})" for f in down)
+            + " - headlines above exclude them.[/dim]"
+        )
 
     if not items:
         console.print("No headlines fetched - the feeds may be unreachable right now.")
@@ -764,20 +870,25 @@ def mcp():
 @main.command()
 @click.option("--host", default="127.0.0.1", show_default=True)
 @click.option("--port", default=8813, show_default=True)
-def dashboard(host: str, port: int):
+@click.option("--token", default=None,
+              help="Dashboard token for paper-order endpoints (or set HOWLET_DASHBOARD_TOKEN). "
+                   "Required before sharing the dashboard beyond localhost.")
+def dashboard(host: str, port: int, token: str):
     """Launch the Bloomberg-style terminal dashboard in your browser.
 
     Combines 13F portfolios, Q/Q changes, live quotes, a market tape,
-    cross-manager consensus, and multi-source news on one dark screen.
+    cross-manager consensus, and multi-source news on one calm, light screen.
+    Binds loopback only by default; served by waitress, not the Flask
+    dev server.
     """
     from .dashboard import run_dashboard
 
     ua = _get_user_agent()
     console.print(
-        f"[bold]EDGAR TERMINAL[/bold] starting at "
+        f"[bold]HOWLET[/bold] starting at "
         f"[blue underline]http://{host}:{port}[/blue underline]  (Ctrl+C to stop)"
     )
-    run_dashboard(ua, host=host, port=port)
+    run_dashboard(ua, host=host, port=port, token=token)
 
 
 def _paper_svc():
@@ -795,9 +906,11 @@ def paper(ctx):
     if not d.get("account"):
         console.print("No paper account yet - place an order (a $100,000 account starts automatically).")
         return
+    fees = d.get("fees_paid") or 0.0
+    fee_note = f"  fees ${fees:,.2f}" if fees else ""
     console.print(
         f"Account ${d['equity']:,.2f}  cash ${d['cash']:,.2f}  return {d['total_return_pct']:+.2f}%  "
-        f"market {'OPEN' if d['market_open'] else 'closed'}  (start ${d['account']['start_cash']:,.2f})"
+        f"market {'OPEN' if d['market_open'] else 'closed'}  (start ${d['account']['start_cash']:,.2f}){fee_note}"
     )
     table = Table(title="Positions")
     for col in ("Symbol", "Qty", "Avg cost", "Price", "Value", "P/L"):

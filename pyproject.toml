@@ -1,6 +1,6 @@
 [project]
 name = "howlet"
-version = "0.8.0"
+version = "0.8.1"
 description = "Free, no-API-key Python client + CLI + Bloomberg-style terminal for SEC EDGAR data"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -12,6 +12,7 @@ dependencies = [
     "click>=8.1",
     "rich>=13.0",
     "flask>=3.0",
+    "waitress>=2.1",  # serves the dashboard (cross-platform; gunicorn doesn't run on Windows)
 ]
 
 [project.urls]
@@ -43,6 +44,12 @@ where = ["src"]
 howlet = ["static/*", "static/app/*", "static/app/assets/*"]
 
 [tool.ruff.lint]
-# ruff's long-standing defaults, pinned: ruff 0.16 widened the default rule set
-# (UP/B/S/SIM/...: 224 findings in existing code). Adopt new rules deliberately.
-select = ["E4", "E7", "E9", "F"]
+# Widened deliberately in 0.8.1 (was only E4/E7/E9/F): the full E/W sets,
+# isort (I), pyupgrade (UP), bugbear (B), flake8-simplify (SIM) and
+# comprehensions (C4). Line length (E501) stays unenforced on purpose -
+# the codebase has 227 long lines and reformatting them is churn, not a
+# fix. S (bandit) and D (docstrings) are still out: S flags the stdlib
+# XML/HTTP use this project is built on, and D would demand docstrings
+# on every test helper.
+select = ["E", "W", "I", "UP", "B", "SIM", "C4"]
+ignore = ["E501"]

@@ -103,3 +103,21 @@ def test_get_option_chain_rejects_bad_expiration_string():
     result = OptionsClient(auth=auth).get_option_chain("AAPL", expiration="not-a-date")
     assert result is None
     auth.get.assert_not_called()
+
+
+# --- Phase 1: null strike must not crash the parser (A7) ---
+
+def test_parse_contract_tolerates_null_strike():
+    from howlet.options import _parse_contract
+
+    contract = _parse_contract(
+        {"contractSymbol": "AAPL260101P00200000", "strike": None}
+    )
+    assert contract.strike == 0.0
+    assert contract.contract_symbol == "AAPL260101P00200000"
+
+
+def test_parse_contract_tolerates_missing_strike():
+    from howlet.options import _parse_contract
+
+    assert _parse_contract({"contractSymbol": "X"}).strike == 0.0

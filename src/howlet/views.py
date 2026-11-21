@@ -10,7 +10,7 @@ map that to a 404 / tool error without parsing messages.
 
 from __future__ import annotations
 
-import json
+import math
 import os
 import threading
 from datetime import datetime, timezone
@@ -27,7 +27,7 @@ from .cache import (
 from .client import EdgarClient
 from .consensus import build_consensus_rows, fetch_latest_portfolios
 from .crypto import CryptoClient
-from .diff import STATUS_ORDER, _aggregate_by_cusip, diff_holdings
+from .diff import STATUS_ORDER, _aggregate_by_cusip, aggregate_options, diff_holdings
 from .events import CorporateEventsClient, get_fed_events, get_shareholder_meetings
 from .form4 import TRANSACTION_CODE_LABELS, list_form4_filings
 from .fulltext import search_filings
@@ -40,13 +40,19 @@ from .indicators import (
     rsi,
     sma,
 )
+from .macro import get_treasury_yield_curve
 from .market import Quote, YahooMarketClient
 from .news import NewsClient
-from .nport import get_fund_holdings, list_nport_accessions, ticker_to_fund
+from .nport import (
+    NportCache,
+    cached_fund_holdings,
+    list_nport_accessions,
+    ticker_to_fund,
+)
 from .options import OptionsClient
 from .presets import FAMOUS_INVESTORS
 from .risk import analyze_portfolio
-from .screener import DEFAULT_UNIVERSE, ScreenerCache, screen
+from .screener import DEFAULT_UNIVERSE, ScreenerCache, build_consensus_universe, screen
 from .tickers import CusipTickerResolver
 from .yahoo_auth import YahooAuthSession
 
@@ -97,10 +103,36 @@ MARKET_SECTIONS: list[tuple[str, list[tuple[str, str]]]] = [
 # real market-cap data instead of a handful of hardcoded Yahoo symbols.)
 
 
-class Services:
-    """Shared clients + a lock that serializes EDGAR access."""
+class _EdgarLocks:
+    """One lock per EDGAR key, so one slow manager doesn't block every panel.
 
-    def __init__(self, user_agent: str, cache_dir: Optional[Path] = None):
+    Keys are "cik:<cik>" for single-manager 13F work, "consensus" for the
+    multi-manager fetches, "fundamentals" for ticker/CIK resolution,
+    "form4" for Form 4 work, "nport" for NPORT, "fulltext" for the
+    full-text search, and "search" for the manager-name search. Every
+    critical section holds exactly one key, never nested, so the finer
+    locks can't deadlock. The SEC self-throttle in EdgarClient._get is
+    still shared across keys (its _last_request_at is racy under
+    concurrency, but the worst case is a 429 that gets retried).
+    """
+
+    def __init__(self):
+        self._guard = threading.Lock()
+        self._locks: dict[str, threading.Lock] = {}
+
+    def for_key(self, key: str) -> threading.Lock:
+        with self._guard:
+            lock = self._locks.get(key)
+            if lock is None:
+                lock = threading.Lock()
+                self._locks[key] = lock
+            return lock
+
+
+class Services:
+    """Shared clients + per-key locks for EDGAR access."""
+
+    def __init__(self, user_agent: str, cache_dir: Path | None = None):
         self.edgar = EdgarClient(user_agent)
         self.market = YahooMarketClient()
         self.news = NewsClient()
@@ -108,7 +140,7 @@ class Services:
         self.cache = FilingCache(cache_dir=cache_dir)
         self.form4_cache = Form4Cache(cache_dir=cache_dir)
         self.fundamentals = FundamentalsClient(self.edgar)
-        self.edgar_lock = threading.Lock()
+        self.edgar_locks = _EdgarLocks()
 
         # events + options share one crumb/cookie session (one crumb
         # fetch instead of two) since both hit Yahoo's walled endpoints.
@@ -116,11 +148,16 @@ class Services:
         self.events = CorporateEventsClient(auth=yahoo_auth)
         self.options = OptionsClient(auth=yahoo_auth)
         self.screener_cache = ScreenerCache(cache_dir=cache_dir)
+        self.nport_cache = NportCache(cache_dir=cache_dir)
         self.crypto = CryptoClient()
         self.paper = paper.PaperStore(cache_dir=cache_dir)
 
+    def edgar_lock_for(self, key: str) -> threading.Lock:
+        """The EDGAR lock for one key (see _EdgarLocks)."""
+        return self.edgar_locks.for_key(key)
 
-def resolve_managers(managers: Optional[list[str]]) -> dict[str, str]:
+
+def resolve_managers(managers: list[str] | None) -> dict[str, str]:
     """Preset labels and raw CIKs (4-10 digits) -> {label: cik}; junk ignored.
 
     None, empty, or nothing valid falls back to every preset.
@@ -176,7 +213,7 @@ def _apply_name_fallback(
     the fallback runs at most once per CUSIP per machine."""
     if not unresolved:
         return
-    with svc.edgar_lock:
+    with svc.edgar_lock_for("fundamentals"):
         for cusip, issuer in unresolved.items():
             ticker = svc.fundamentals.name_to_ticker(issuer)
             if ticker:
@@ -204,7 +241,7 @@ def portfolio_view(svc: Services, identifier: str, top: int = 25) -> dict:
     top = min(top, 100)
     cik = resolve_cik(identifier)
 
-    with svc.edgar_lock:
+    with svc.edgar_lock_for(f"cik:{cik}"):
         filings = svc.edgar.list_13f_filings(cik, limit=1)
         if not filings:
             raise LookupError(f"No 13F-HR filings for '{identifier}'")
@@ -212,8 +249,12 @@ def portfolio_view(svc: Services, identifier: str, top: int = 25) -> dict:
         holdings = cached_information_table(svc.edgar, svc.cache, filing)
 
     # One row per CUSIP (filers often split a security across entries).
+    # Option rows are excluded from the equity totals (see diff.py) and
+    # reported separately below.
     agg: dict[str, dict] = {}
     for h in holdings:
+        if h.is_option:
+            continue
         entry = agg.setdefault(
             h.cusip,
             {
@@ -231,6 +272,22 @@ def portfolio_view(svc: Services, identifier: str, top: int = 25) -> dict:
     total = sum(r["value_usd"] for r in rows)
     for r in rows:
         r["weight_pct"] = r["value_usd"] / total * 100.0 if total else 0.0
+
+    options = aggregate_options(holdings)
+    option_rows = [
+        {
+            "issuer": o["name_of_issuer"],
+            "cusip": cusip,
+            "put_call": o["put_call"],
+            "value_usd": o["value_usd"],
+            "shares": o["shares"],
+            "rows": o["rows"],
+            "mixed": o["mixed"],
+        }
+        for cusip, o in sorted(
+            options.items(), key=lambda kv: -kv[1]["value_usd"]
+        )
+    ]
 
     top_rows = rows[:top]
     # Only equity-type positions get ticker/quote decoration.
@@ -268,13 +325,15 @@ def portfolio_view(svc: Services, identifier: str, top: int = 25) -> dict:
         "total_value_usd": total,
         "position_count": len(rows),
         "positions": top_rows,
+        "options": option_rows,
+        "option_count": len(option_rows),
     }
 
 
 def diff_view(svc: Services, identifier: str) -> dict:
     """What changed between a manager's two most recent filings."""
     cik = resolve_cik(identifier)
-    with svc.edgar_lock:
+    with svc.edgar_lock_for(f"cik:{cik}"):
         filings = svc.edgar.list_13f_filings(cik, limit=2)
         if len(filings) < 2:
             raise LookupError(
@@ -313,10 +372,10 @@ def consensus_view(
     svc: Services,
     min_managers: int = 2,
     limit: int = 20,
-    managers: Optional[list[str]] = None,
+    managers: list[str] | None = None,
 ) -> dict:
     """Cross-manager holdings overlap across the tracked presets."""
-    with svc.edgar_lock:
+    with svc.edgar_lock_for("consensus"):
         portfolios = fetch_latest_portfolios(
             svc.edgar, resolve_managers(managers), cache=svc.cache
         )
@@ -340,10 +399,10 @@ def consensus_view(
     }
 
 
-def _prior_positions(svc: Services, cik: str) -> Optional[dict]:
+def _prior_positions(svc: Services, cik: str) -> dict | None:
     """Aggregated positions of a manager's previous 13F-HR (None if none)."""
     try:  # action is decoration: a failed lookup means "no prior", never a 502
-        with svc.edgar_lock:
+        with svc.edgar_lock_for(f"cik:{cik}"):
             filings = svc.edgar.list_13f_filings(cik, limit=2)
             if len(filings) < 2:
                 return None
@@ -354,7 +413,7 @@ def _prior_positions(svc: Services, cik: str) -> Optional[dict]:
         return None
 
 
-def _holder_action(prior: Optional[dict], cusip: str, shares: float) -> Optional[str]:
+def _holder_action(prior: dict | None, cusip: str, shares: float) -> str | None:
     if prior is None:
         return None
     before = prior.get(cusip)
@@ -366,7 +425,7 @@ def _holder_action(prior: Optional[dict], cusip: str, shares: float) -> Optional
 
 
 def holders_view(
-    svc: Services, symbol: str, managers: Optional[list[str]] = None
+    svc: Services, symbol: str, managers: list[str] | None = None
 ) -> dict:
     """Bloomberg HDS-style: which tracked managers hold this ticker.
 
@@ -374,7 +433,7 @@ def holders_view(
     (answers are disk-cached forever, so this is slow exactly once).
     """
     symbol_u = symbol.upper()
-    with svc.edgar_lock:
+    with svc.edgar_lock_for("consensus"):
         portfolios = fetch_latest_portfolios(
             svc.edgar, resolve_managers(managers), cache=svc.cache
         )
@@ -440,7 +499,7 @@ def position_history_view(
     cik = resolve_cik(identifier)
     query_u = query.strip().upper()
 
-    with svc.edgar_lock:
+    with svc.edgar_lock_for(f"cik:{cik}"):
         filings = svc.edgar.list_13f_filings(cik, limit=quarters)
         if not filings:
             raise LookupError(f"No 13F-HR filings for '{identifier}'")
@@ -513,7 +572,7 @@ def position_history_view(
 def _symbol_form4_transactions(svc: Services, symbol: str, filings: int):
     """(cik, transactions) for one ticker's recent Form 4s, cache-first.
     cik is None when SEC has no filer for the symbol. Must be called
-    with svc.edgar_lock held."""
+    with the "form4" lock held (svc.edgar_lock_for("form4"))."""
     cik = svc.fundamentals.ticker_to_cik(symbol)
     if cik is None:
         return None, []
@@ -543,7 +602,7 @@ def insider_buys_view(
     summary: dict[str, dict] = {}
     scanned = []
     for symbol in symbols:
-        with svc.edgar_lock:
+        with svc.edgar_lock_for("form4"):
             cik, transactions = _symbol_form4_transactions(
                 svc, symbol, filings_per_symbol
             )
@@ -603,7 +662,7 @@ def fund_view(svc: Services, symbol: str, top: int = 50) -> dict:
     trusts like SPY).
     """
     top = min(top, 200)
-    with svc.edgar_lock:
+    with svc.edgar_lock_for("nport"):
         fund = ticker_to_fund(svc.edgar, symbol)
         if fund is None:
             raise LookupError(
@@ -615,7 +674,9 @@ def fund_view(svc: Services, symbol: str, top: int = 50) -> dict:
         accessions = list_nport_accessions(svc.edgar, series_id, limit=1)
         if not accessions:
             raise LookupError(f"No NPORT-P filings found for '{symbol}'")
-        info, holdings = get_fund_holdings(svc.edgar, cik, accessions[0])
+        info, holdings = cached_fund_holdings(
+            svc.edgar, getattr(svc, "nport_cache", None), cik, accessions[0]
+        )
 
     return {
         "symbol": symbol.upper(),
@@ -645,24 +706,24 @@ def fund_view(svc: Services, symbol: str, top: int = 50) -> dict:
 
 
 def fulltext_search_view(
-    svc: Services, query: str, forms: Optional[list[str]] = None, limit: int = 20
+    svc: Services, query: str, forms: list[str] | None = None, limit: int = 20
 ) -> dict:
     """Search the CONTENT of EDGAR filings (2001-present, official SEC
     full-text index). Quote a phrase for exact match. Relevance-ranked."""
     limit = min(limit, 50)
-    with svc.edgar_lock:
+    with svc.edgar_lock_for("fulltext"):
         results = search_filings(svc.edgar, query, forms=forms, limit=limit)
     return {"query": query, "forms": forms or [], "results": results}
 
 
 def company_filings_view(
-    svc: Services, symbol: str, form: Optional[str] = None, limit: int = 20
+    svc: Services, symbol: str, form: str | None = None, limit: int = 20
 ) -> dict:
     """A company's recent SEC filings feed (8-Ks, 10-K/Q, proxies, ...),
     newest first, straight from the submissions API. `form` filters to
     one type; default is everything the company files."""
     limit = min(limit, 50)
-    with svc.edgar_lock:
+    with svc.edgar_lock_for("fundamentals"):
         cik = svc.fundamentals.ticker_to_cik(symbol)
         if cik is None:
             raise LookupError(
@@ -694,7 +755,7 @@ def company_filings_view(
 
 
 def latest_filings_view(
-    svc: Services, managers: Optional[list[str]] = None
+    svc: Services, managers: list[str] | None = None
 ) -> list[dict]:
     """Every tracked manager's most recent 13F-HR, for new-filing alerts.
 
@@ -711,7 +772,7 @@ def latest_filings_view(
             continue
         seen_ciks.add(padded)
         try:
-            with svc.edgar_lock:
+            with svc.edgar_lock_for(f"cik:{cik}"):
                 filings = svc.edgar.list_13f_filings(cik, limit=1)
         except Exception:
             continue  # one broken manager must not kill the alert poll
@@ -743,7 +804,7 @@ def insiders_view(svc: Services, symbol: str, filings: int = 15) -> dict:
     mostly compensation mechanics (grants, RSU vests, tax withholding).
     """
     filings = min(filings, 40)
-    with svc.edgar_lock:
+    with svc.edgar_lock_for("form4"):
         cik = svc.fundamentals.ticker_to_cik(symbol)
         if cik is None:
             raise LookupError(
@@ -880,7 +941,7 @@ def _studies_dict(closes: list[float]) -> dict:
     }
 
 
-def _orb_dict(svc: Services, symbol: str, opening_bars: int = 6) -> Optional[dict]:
+def _orb_dict(svc: Services, symbol: str, opening_bars: int = 6) -> dict | None:
     """Opening-range breakout needs today's own intraday bars (5-min), not
     the daily-bar history the main chart uses - a fresh, separate fetch."""
     intraday = svc.market.get_quote(symbol, range_="1d", interval="5m")
@@ -902,7 +963,7 @@ def _orb_dict(svc: Services, symbol: str, opening_bars: int = 6) -> Optional[dic
 
 
 def quotes_view(svc: Services, symbols: list[str]) -> list[dict]:
-    quotes = svc.market.get_quotes(symbols, range_="5d")
+    quotes = svc.market.get_quotes(symbols, range_="5d", with_history=True)
     return [
         _quote_dict(quotes[s]) | {"sparkline": quotes[s].sparkline}
         for s in symbols
@@ -913,7 +974,7 @@ def quotes_view(svc: Services, symbols: list[str]) -> list[dict]:
 def markets_view(svc: Services) -> list[dict]:
     """The MKTS screen: world indices / FX / commodities / crypto."""
     all_symbols = [s for _, pairs in MARKET_SECTIONS for s, _ in pairs]
-    quotes = svc.market.get_quotes(all_symbols, range_="5d")
+    quotes = svc.market.get_quotes(all_symbols, range_="5d", with_history=True)
     sections = []
     for section, pairs in MARKET_SECTIONS:
         rows = []
@@ -942,7 +1003,7 @@ def crypto_view(svc: Services, limit: int = 50) -> dict:
     return {"source": source, "rows": rows}
 
 
-def fx_matrix_view(currencies: Optional[list[str]] = None) -> dict:
+def fx_matrix_view(currencies: list[str] | None = None) -> dict:
     """FX cross-rate matrix from ECB daily reference rates (Frankfurter,
     keyless). Official fixings updated once per working day - the tape's
     Yahoo quotes cover intraday. {} fields when unreachable."""
@@ -961,7 +1022,7 @@ def regulatory_view(limit: int = 20) -> list[dict]:
 
 def facts_view(svc: Services, symbol: str, years: int = 5) -> dict:
     """Bloomberg FA-style: annual headline financials from SEC XBRL."""
-    with svc.edgar_lock:
+    with svc.edgar_lock_for("fundamentals"):
         cik = svc.fundamentals.ticker_to_cik(symbol)
         if cik is None:
             raise LookupError(
@@ -997,7 +1058,7 @@ def events_view(svc: Services, symbol: str) -> dict:
     hide the (fully reliable) SEC proxy-filing section, and vice versa.
     """
     earnings = svc.events.get_earnings_info(symbol)
-    with svc.edgar_lock:
+    with svc.edgar_lock_for("fundamentals"):
         cik = svc.fundamentals.ticker_to_cik(symbol)
         meetings = get_shareholder_meetings(svc.edgar, cik) if cik else []
 
@@ -1058,18 +1119,35 @@ def macro_view() -> dict:
 
 def screener_view(
     svc: Services,
-    universe: Optional[list[str]] = None,
-    filters: Optional[dict[str, tuple[Optional[float], Optional[float]]]] = None,
+    universe: list[str] | None = None,
+    filters: dict[str, tuple[float | None, float | None]] | None = None,
+    universe_source: str | None = None,
 ) -> dict:
     """Screen a ticker universe (default: a curated large-cap list - see
     `screener.py` for why this isn't a full S&P 500 screen) by valuation
     and growth metrics built from SEC fundamentals + Yahoo price.
+
+    Pass universe_source="consensus" to screen what the tracked 13F
+    managers hold instead (built from their latest filings; falls back
+    to the default list when no manager portfolio loads). An explicit
+    `universe` list wins over `universe_source`.
     """
+    source = "default"
+    if universe is not None:
+        source = "custom"
+    elif universe_source == "consensus":
+        built = build_consensus_universe(svc.edgar, cache=svc.cache, resolver=svc.resolver)
+        if built:
+            universe = built
+            source = "consensus"
+        # Empty consensus (no manager portfolio loaded) falls through
+        # to the default list instead of screening nothing.
     rows = screen(
         svc.market, svc.fundamentals, universe=universe,
         cache=svc.screener_cache, filters=filters,
     )
     return {
+        "universe": source,
         "universe_size": len(universe or DEFAULT_UNIVERSE),
         "matched": len(rows),
         "rows": [
@@ -1089,7 +1167,7 @@ def screener_view(
     }
 
 
-def options_view(svc: Services, symbol: str, expiration: Optional[str] = None) -> dict:
+def options_view(svc: Services, symbol: str, expiration: str | None = None) -> dict:
     """Bloomberg OMON-style: an options chain (calls + puts) for one
     expiration. Raises LookupError if the (unofficial) options endpoint
     is unavailable or the symbol has no listed options.
@@ -1124,22 +1202,85 @@ def _contract_dict(c) -> dict:
     }
 
 
+def _treasury_3mo_yield() -> float | None:
+    """3-month T-bill yield (%) as the Sharpe risk-free proxy.
+
+    None when the Treasury curve is unavailable - the caller falls back
+    to 0.0, matching the old behavior. The yield is decoration on the
+    risk view, never a reason to fail it.
+    """
+    try:
+        # Short timeout: the yield is decoration on the risk view, and
+        # a slow Treasury must not stall the endpoint (two month
+        # attempts at the default 15s would cost 30s).
+        curve = get_treasury_yield_curve(timeout=5)
+    except Exception:
+        return None
+    for point in curve.get("curve", []) or []:
+        if point.get("maturity") == "3mo":
+            try:
+                return float(point["yield_pct"])
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def _validate_risk_holdings(holdings) -> list[tuple[str, float]]:
+    """Validate a user-supplied portfolio list into (symbol, shares) pairs.
+
+    Every bad row is collected and reported in one ValueError, which the
+    dashboard maps to JSON 400 (and MCP surfaces as a tool error) -
+    instead of a bare KeyError/ValueError/TypeError becoming an HTML 500.
+    """
+    if not isinstance(holdings, list):
+        raise ValueError(
+            "holdings must be a list of {\"symbol\", \"shares\"} objects"
+        )
+    problems: list[str] = []
+    validated: list[tuple[str, float]] = []
+    for i, h in enumerate(holdings):
+        if not isinstance(h, dict):
+            problems.append(f"row {i}: not an object")
+            continue
+        symbol = h.get("symbol")
+        if not isinstance(symbol, str) or not symbol.strip():
+            problems.append(f"row {i}: missing or empty 'symbol'")
+            continue
+        try:
+            shares = float(h.get("shares"))
+        except (TypeError, ValueError):
+            problems.append(f"row {i}: 'shares' is not a number")
+            continue
+        if not math.isfinite(shares):
+            problems.append(f"row {i}: 'shares' is not finite")
+            continue
+        validated.append((symbol.strip(), shares))
+    if problems:
+        raise ValueError("Invalid holdings: " + "; ".join(problems))
+    return validated
+
+
 def risk_view(svc: Services, holdings: list[dict], range_: str = "1y") -> dict:
     """Volatility/drawdown/Sharpe for a user-defined portfolio.
 
     `holdings` is [{"symbol": "AAPL", "shares": 10}, ...] - a personal
     position list, NOT a 13F manager (see `portfolio_view` for that).
     Symbols Yahoo can't price are silently dropped from the analysis.
+    Histories are aligned on their common dates (see `risk.py`), and
+    Sharpe uses the 3-month T-bill yield as the risk-free rate.
+    Invalid holding rows raise ValueError (JSON 400 from the dashboard).
     """
-    priced: dict[str, tuple[float, list[float]]] = {}
-    for h in holdings:
-        symbol, shares = h["symbol"], float(h["shares"])
+    priced: dict[str, tuple[float, list[float], list[int]]] = {}
+    for symbol, shares in _validate_risk_holdings(holdings):
         q = svc.market.get_security(symbol, range_=range_)
         if q is None or len(q.sparkline) < 2:
             continue
-        priced[symbol] = (shares * q.price, q.sparkline)
+        priced[symbol] = (shares * q.price, q.sparkline, q.history_ts)
 
-    result = analyze_portfolio(priced)
+    risk_free = _treasury_3mo_yield() if priced else None
+    result = analyze_portfolio(
+        priced, risk_free_rate_pct=risk_free if risk_free is not None else 0.0
+    )
     if result is None:
         return {"positions": [], "error": "Not enough price history to analyze."}
     return {
@@ -1161,7 +1302,7 @@ def risk_view(svc: Services, holdings: list[dict], range_: str = "1y") -> dict:
 
 
 def news_view(
-    svc: Services, symbols: Optional[list[str]] = None, limit: int = 30
+    svc: Services, symbols: list[str] | None = None, limit: int = 30
 ) -> list[dict]:
     limit = min(limit, 100)
     if symbols:
@@ -1186,37 +1327,62 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def paper_account_view(svc, now: Optional[datetime] = None) -> dict:
-    """Settle open orders, then cash, positions at live prices, orders and recent activity."""
+def paper_account_view(svc, now: datetime | None = None) -> dict:
+    """Cash, positions at live prices, orders and recent activity.
+
+    Reads settle open orders in memory so the view is current, but never
+    save: a GET (dashboard refresh, browser prefetch, monitoring probe)
+    must not fill or expire orders. Settlement is persisted only by the
+    write paths (order placement / cancel).
+    """
     now, prices = now or _now(), paper.MarketPrices(svc.market)
-    with paper.LOCK:
+    with paper.locked(svc.paper):
         state = svc.paper.load()
         if state is None:
             return {"account": None, "market_open": prices.market_open(now)}
-        before = json.dumps(state, sort_keys=True)
         paper.settle(state, prices, now)
-        if json.dumps(state, sort_keys=True) != before:  # don't clobber another process's write
-            svc.paper.save(state)
         return paper.summary(state, prices, now)
 
 
 def paper_order_view(svc, symbol: str, side: str, qty, type: str = "market", limit=None, stop=None,
-                     tif: str = "day", now: Optional[datetime] = None) -> dict:
-    """Place a paper order (creates a default account on first use). Raises paper.PaperError."""
+                     tif: str = "day", now: datetime | None = None,
+                     max_order_usd=None, max_daily_usd=None) -> dict:
+    """Place a paper order (creates a default account on first use). Raises paper.PaperError.
+
+    Settles open orders first (a write path, so the settlement is saved),
+    then enforces the paper spending caps on buys (see paper.py).
+    """
     now, prices = now or _now(), paper.MarketPrices(svc.market)
-    with paper.LOCK:
+    with paper.locked(svc.paper):
         state = svc.paper.load()
         if state is not None:
             paper.settle(state, prices, now)
+        # Orders placed before this one, for the daily cap (place_order
+        # appends to state, so snapshot first).
+        prior_orders = list(state["orders"]) if state is not None else []
         state, order = paper.place_order(state, prices, now, symbol, side, qty, type=type,
                                          limit=limit, stop=stop, tif=tif)
+        if order["side"] == "buy":
+            # Notional at the committed price: limit/stop level, else the
+            # fill price, else the reference quote. Checked after
+            # place_order's own validation, so a bad symbol/qty still gets
+            # place_order's error, not a cap error.
+            price = (
+                order["limit"] or order["stop"]
+                or (order["fill"] or {}).get("price")
+                or order["ref_price"]
+            )
+            paper.check_spending_caps(
+                {"orders": prior_orders}, "buy", order["qty"], float(price), now,
+                max_order_usd=max_order_usd, max_daily_usd=max_daily_usd,
+            )
         svc.paper.save(state)
         return order
 
 
-def paper_cancel_view(svc, order_id: str, now: Optional[datetime] = None) -> dict:
+def paper_cancel_view(svc, order_id: str, now: datetime | None = None) -> dict:
     now, prices = now or _now(), paper.MarketPrices(svc.market)
-    with paper.LOCK:
+    with paper.locked(svc.paper):
         state = svc.paper.load()
         if state is None:
             raise LookupError("No paper account yet")
@@ -1226,23 +1392,22 @@ def paper_cancel_view(svc, order_id: str, now: Optional[datetime] = None) -> dic
         return order
 
 
-def paper_history_view(svc, now: Optional[datetime] = None) -> dict:
+def paper_history_view(svc, now: datetime | None = None) -> dict:
+    """Daily account value vs SPY. Like paper_account_view: settles in
+    memory for a current view, never saves (see C1)."""
     now, prices = now or _now(), paper.MarketPrices(svc.market)
-    with paper.LOCK:
+    with paper.locked(svc.paper):
         state = svc.paper.load()
         if state is None:
             return {"dates": [], "account": [], "spy": [], "account_return_pct": None, "spy_return_pct": None}
-        before = json.dumps(state, sort_keys=True)
         paper.settle(state, prices, now)
-        if json.dumps(state, sort_keys=True) != before:
-            svc.paper.save(state)
         return paper.history(state, prices, now)
 
 
-def paper_reset_view(svc, start_cash=paper.DEFAULT_START_CASH, now: Optional[datetime] = None) -> dict:
+def paper_reset_view(svc, start_cash=paper.DEFAULT_START_CASH, now: datetime | None = None) -> dict:
     """Archive the current paper account and start a fresh one. Deliberately not an MCP tool."""
     now, prices = now or _now(), paper.MarketPrices(svc.market)
-    with paper.LOCK:
+    with paper.locked(svc.paper):
         state = paper.reset(svc.paper.load(), start_cash, now)
         svc.paper.save(state)
         return paper.summary(state, prices, now)

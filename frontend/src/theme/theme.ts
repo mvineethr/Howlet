@@ -1,5 +1,5 @@
 import { createDarkTheme, createLightTheme, type Theme } from "@fluentui/react-components";
-import { brandRamp, FONT_MONO, FONT_TEXT, SURFACES } from "./tokens";
+import { brandRamp, CALM_SHADOW_4, FONT_MONO, FONT_TEXT, SURFACES } from "./tokens";
 
 export type ThemeMode = "system" | "light" | "dark";
 
@@ -18,6 +18,12 @@ export function buildTheme(dark: boolean, accent: string): Theme {
     ...(dark ? { colorBrandForeground1: brand[110], colorBrandForeground2: brand[120] } : {}),
     fontFamilyBase: FONT_TEXT,
     fontFamilyMonospace: FONT_MONO,
+    // Softer corners and a quieter card shadow, matching the calm look:
+    // cards read as hairline-bordered paper, not lifted panels.
+    borderRadiusMedium: "6px",
+    borderRadiusLarge: "8px",
+    borderRadiusXLarge: "12px",
+    shadow4: CALM_SHADOW_4,
     colorNeutralBackground1: s.panel,
     colorNeutralBackground2: s.bg,
     colorNeutralBackground3: s.elev1,

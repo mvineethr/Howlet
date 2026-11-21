@@ -496,6 +496,52 @@ _NVDA_INFO_TABLE_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
 </informationTable>
 """
 
+# Same CUSIP twice, same discretion, differing only in voting authority -
+# the Berkshire-style split-voting case (Codex review on PR #3).
+_AAPL_SPLIT_VOTING_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<informationTable xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">
+  <infoTable>
+    <nameOfIssuer>APPLE INC</nameOfIssuer>
+    <cusip>037833100</cusip>
+    <value>10000000</value>
+    <shsPrnAmt>
+      <sshPrnamt>100000</sshPrnamt>
+      <sshPrnamtType>SH</sshPrnamtType>
+    </shsPrnAmt>
+    <investmentDiscretion>SOLE</investmentDiscretion>
+    <votingAuthority><Sole>100000</Sole><Shared>0</Shared><None>0</None></votingAuthority>
+  </infoTable>
+  <infoTable>
+    <nameOfIssuer>APPLE INC</nameOfIssuer>
+    <cusip>037833100</cusip>
+    <value>5000000</value>
+    <shsPrnAmt>
+      <sshPrnamt>50000</sshPrnamt>
+      <sshPrnamtType>SH</sshPrnamtType>
+    </shsPrnAmt>
+    <investmentDiscretion>SOLE</investmentDiscretion>
+    <votingAuthority><Sole>0</Sole><Shared>50000</Shared><None>0</None></votingAuthority>
+  </infoTable>
+</informationTable>
+"""
+
+# Add-on amendment touching only the sole-voting AAPL row.
+_AAPL_ADDS_SOLE_VOTING_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<informationTable xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">
+  <infoTable>
+    <nameOfIssuer>APPLE INC</nameOfIssuer>
+    <cusip>037833100</cusip>
+    <value>12000000</value>
+    <shsPrnAmt>
+      <sshPrnamt>120000</sshPrnamt>
+      <sshPrnamtType>SH</sshPrnamtType>
+    </shsPrnAmt>
+    <investmentDiscretion>SOLE</investmentDiscretion>
+    <votingAuthority><Sole>120000</Sole><Shared>0</Shared><None>0</None></votingAuthority>
+  </infoTable>
+</informationTable>
+"""
+
 
 def _cover_page_html(checked: str | None) -> bytes:
     """A 13F cover page with the amendment box marked as given.
@@ -569,6 +615,31 @@ def test_amendment_adds_new_holdings_merges_with_original(client: EdgarClient):
     holdings = client.get_information_table(_filing("0001-23-000002", "2026-06-01", "13F-HR/A"))
 
     assert [h.cusip for h in holdings] == ["037833100", "191216100", "594918104"]
+
+
+@responses.activate
+def test_amendment_adds_keeps_split_voting_rows(client: EdgarClient):
+    """An adds amendment must not collapse base rows that differ only
+    in voting authority (Codex review on PR #3): the two AAPL rows
+    survive the merge, and only the sole-voting row is replaced by
+    the amendment's row."""
+    responses.add(
+        responses.GET, "https://data.sec.gov/submissions/CIK0001067983.json",
+        json=_amendment_submissions(
+            ("13F-HR", "0001-23-000001", "2026-05-15", "doc.htm"),
+            ("13F-HR/A", "0001-23-000002", "2026-06-01", "doc.htm"),
+        ),
+        status=200,
+    )
+    _register_13f_filing("0001-23-000001", _AAPL_SPLIT_VOTING_XML)
+    _register_13f_filing("0001-23-000002", _AAPL_ADDS_SOLE_VOTING_XML,
+                         cover=_cover_page_html("adds"))
+
+    holdings = client.get_information_table(_filing("0001-23-000002", "2026-06-01", "13F-HR/A"))
+
+    assert len(holdings) == 2
+    assert sorted(h.shares for h in holdings) == [50000, 120000]
+    assert sum(h.shares for h in holdings) == 170000
 
 
 @responses.activate

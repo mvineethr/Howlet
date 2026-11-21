@@ -18,8 +18,7 @@ Three tiers, cheapest-first:
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import requests
@@ -59,19 +58,33 @@ _TREASURY_MATURITIES = [
 ]
 
 
-@dataclass
-class YieldCurvePoint:
-    maturity: str
-    yield_pct: float
+def get_treasury_yield_curve(
+    session: requests.Session | None = None, timeout: int = 15
+) -> dict:
+    """Most recent daily Treasury par yield curve. {} on any failure.
 
-
-def get_treasury_yield_curve(session: Optional[requests.Session] = None) -> dict:
-    """Most recent daily Treasury par yield curve. {} on any failure."""
+    Treasury publishes a month's data partway through the month, so on
+    the 1st - before the current month has any entries - this falls
+    back to the previous month's curve instead of returning nothing.
+    """
     session = session or requests.Session()
-    yyyymm = datetime.now(timezone.utc).strftime("%Y%m")
+    now = datetime.now(timezone.utc)
+    for yyyymm in (
+        now.strftime("%Y%m"),
+        (now.replace(day=1) - timedelta(days=1)).strftime("%Y%m"),
+    ):
+        curve = _fetch_treasury_month(session, yyyymm, timeout=timeout)
+        if curve:
+            return curve
+    return {}
+
+
+def _fetch_treasury_month(
+    session: requests.Session, yyyymm: str, timeout: int = 15
+) -> dict:
     url = TREASURY_YIELD_URL.format(yyyymm=yyyymm)
     try:
-        resp = session.get(url, timeout=15)
+        resp = session.get(url, timeout=timeout)
         resp.raise_for_status()
     except requests.RequestException:
         return {}
@@ -146,14 +159,22 @@ def get_bls_series(series_ids: list[str], years: int = 3) -> dict:
         sid = series.get("seriesID")
         if not sid:
             continue
-        out[sid] = [
-            {"year": d["year"], "period": d["periodName"], "value": d["value"]}
-            for d in series.get("data", [])
-        ]
+        rows = []
+        for d in series.get("data", []):
+            # A malformed series entry must be skipped, not crash the
+            # whole BLS response (the parse sits outside the request try).
+            if not isinstance(d, dict) or not all(
+                k in d for k in ("year", "periodName", "value")
+            ):
+                continue
+            rows.append(
+                {"year": d["year"], "period": d["periodName"], "value": d["value"]}
+            )
+        out[sid] = rows
     return out
 
 
-def get_fred_series(series_id: str, api_key: Optional[str] = None) -> Optional[list[dict]]:
+def get_fred_series(series_id: str, api_key: str | None = None) -> list[dict] | None:
     """Recent observations for a FRED series. None if no key is configured
     (env var FRED_API_KEY) or the request fails - this is the one optional,
     key-gated data source in this project; everything else works without it.
@@ -180,11 +201,13 @@ def get_fred_series(series_id: str, api_key: Optional[str] = None) -> Optional[l
     return [
         {"date": o["date"], "value": o["value"]}
         for o in data.get("observations", [])
-        if o.get("value") not in (None, ".")
+        if isinstance(o, dict)
+        and o.get("date") is not None
+        and o.get("value") not in (None, ".")
     ]
 
 
-def get_fred_snapshot(api_key: Optional[str] = None) -> dict:
+def get_fred_snapshot(api_key: str | None = None) -> dict:
     """Latest value for every FRED_SERIES entry. {} without a key.
 
     label -> {"description", "latest", "date"} for each series that

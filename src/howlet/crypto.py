@@ -28,7 +28,7 @@ _CACHE_TTL_SECONDS = 60.0
 class CryptoClient:
     """Top coins by market cap, normalized across both providers."""
 
-    def __init__(self, session: Optional[requests.Session] = None):
+    def __init__(self, session: requests.Session | None = None):
         self.session = session or requests.Session()
         self._cache: tuple[float, str, list[dict]] = (0.0, "", [])
 
@@ -44,17 +44,20 @@ class CryptoClient:
         if rows and time.monotonic() - cached_at < _CACHE_TTL_SECONDS:
             return source, rows[:limit]
 
+        # Always fetch the full 100 and slice: the cache is keyed on
+        # nothing, so a limit=20 call used to poison a later limit=50
+        # call (it would silently return only 20 rows).
         for source, fetch in (
             ("coingecko", self._from_coingecko),
             ("coinpaprika", self._from_coinpaprika),
         ):
             try:
-                rows = fetch(limit)
+                rows = fetch(100)
             except (requests.RequestException, ValueError, KeyError, TypeError):
                 continue
             if rows:
                 self._cache = (time.monotonic(), source, rows)
-                return source, rows
+                return source, rows[:limit]
         return "", []
 
     def _from_coingecko(self, limit: int) -> list[dict]:

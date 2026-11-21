@@ -230,3 +230,109 @@ def test_stale_quote_served_when_every_source_fails(monkeypatch):
     responses.replace(responses.GET, AAPL_URL, status=404, json={})
     # Nasdaq isn't registered, so it fails too (ConnectionError).
     assert client.get_quote("AAPL") is first
+
+
+# --- Phase 1: stock splits from Yahoo chart events (A3) ---
+
+def _chart_payload_with_splits():
+    payload = _chart_payload()
+    payload["chart"]["result"][0]["events"] = {
+        "split": {
+            # 2024-06-10 14:30 UTC (NVDA's 10:1 split)
+            "1718039400": {"date": 1718039400, "numerator": 10, "denominator": 1},
+            # 2022-08-25 (an older 3:2 split, out of most windows)
+            "1661433600": {"date": 1661433600, "numerator": 3, "denominator": 2},
+        }
+    }
+    return payload
+
+
+def test_parse_splits_reads_chart_events():
+    splits = YahooMarketClient._parse_splits(_chart_payload_with_splits())
+    assert splits == [
+        {"date": "2022-08-25", "numerator": 3, "denominator": 2},
+        {"date": "2024-06-10", "numerator": 10, "denominator": 1},
+    ]
+
+
+def test_parse_splits_returns_empty_without_events():
+    assert YahooMarketClient._parse_splits(_chart_payload()) == []
+    assert YahooMarketClient._parse_splits({}) == []
+
+
+def test_split_factor_between_applies_only_splits_inside_window():
+    from datetime import date
+
+    from howlet.market import split_factor_between
+
+    splits = YahooMarketClient._parse_splits(_chart_payload_with_splits())
+    assert split_factor_between(
+        splits, date(2024, 3, 31), date(2024, 6, 30)
+    ) == 10.0
+    # Window ends before the 2024 split: only the 2022 split counts.
+    assert split_factor_between(
+        splits, date(2022, 3, 31), date(2022, 6, 30)
+    ) == 1.0
+    assert split_factor_between(
+        splits, date(2022, 6, 30), date(2022, 9, 30)
+    ) == 1.5
+    assert split_factor_between(splits, date(2025, 1, 1), date(2025, 3, 31)) == 1.0
+    assert split_factor_between([], date(2024, 1, 1), date(2024, 12, 31)) == 1.0
+
+
+@responses.activate
+def test_get_splits_fetches_chart_events():
+    responses.get(AAPL_URL, json=_chart_payload_with_splits())
+    client = YahooMarketClient()
+    splits = client.get_splits("AAPL")
+    assert splits[1] == {"date": "2024-06-10", "numerator": 10, "denominator": 1}
+
+
+# --- Phase 2: _get retries dropped connections (B9) ---
+
+def test_get_retries_connection_error_once_then_succeeds(monkeypatch):
+    import requests
+
+    monkeypatch.setattr(market, "_MIN_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(market, "_RETRY_BACKOFF_BASE_SECONDS", 0.0)
+
+    class Resp:
+        status_code = 200
+
+        def raise_for_status(self):
+            return None
+
+    calls = {"n": 0}
+
+    def flaky_get(url, timeout=15, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise requests.ConnectionError("dropped keep-alive")
+        return Resp()
+
+    client = YahooMarketClient()
+    monkeypatch.setattr(client.session, "get", flaky_get)
+    resp = client._get("https://example.com/x")
+    assert resp.status_code == 200
+    assert calls["n"] == 2
+
+
+def test_get_raises_after_exhausting_connection_retries(monkeypatch):
+    import pytest
+    import requests
+
+    monkeypatch.setattr(market, "_MIN_INTERVAL_SECONDS", 0.0)
+    monkeypatch.setattr(market, "_RETRY_BACKOFF_BASE_SECONDS", 0.0)
+
+    calls = {"n": 0}
+
+    def always_down(url, timeout=15, **kwargs):
+        calls["n"] += 1
+        raise requests.ConnectionError("dropped keep-alive")
+
+    client = YahooMarketClient()
+    monkeypatch.setattr(client.session, "get", always_down)
+    with pytest.raises(requests.ConnectionError):
+        client._get("https://example.com/x")
+    # Initial attempt + _MAX_RETRIES retries.
+    assert calls["n"] == market._MAX_RETRIES + 1

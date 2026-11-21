@@ -303,6 +303,43 @@ def test_caps_configurable_via_env(tmp_path, monkeypatch):
         views.paper_order_view(svc, "AAPL", "buy", 1, type="limit", limit=200)
 
 
+# P2 (Codex review) - pending buys count at their limit/stop level
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("type_,level_kw", [
+    ("limit", {"limit": 150}),
+    ("stop", {"stop": 150}),
+])
+def test_pending_buy_counts_at_limit_or_stop(tmp_path, type_, level_kw):
+    """An open buy whose level is above the quote commits qty x level.
+
+    Quote is $100, level is $150: the first order commits $7,500, not
+    $5,000. Two further $10,000 buys must then breach the $25,000 daily
+    cap; at the reference price they would total exactly $25,000 and pass.
+    """
+    svc = _paper_svc(tmp_path, aapl=_aapl_quote(price=100.0))
+    views.paper_order_view(svc, "AAPL", "buy", 50, type=type_, **level_kw)
+    views.paper_order_view(svc, "AAPL", "buy", 50, type="limit", limit=200)
+    with pytest.raises(paper.PaperError, match="daily cap"):
+        views.paper_order_view(svc, "AAPL", "buy", 50, type="limit", limit=200)
+
+
+def test_filled_order_counts_on_fill_date_not_place_date(tmp_path):
+    """A GTC buy placed yesterday that fills today counts toward TODAY's
+    daily cap, not yesterday's (the order's creation date)."""
+    friday_bar = (int(_at(0).timestamp()), 199, 201, 198)
+    svc = _paper_svc(tmp_path, aapl=_aapl_quote(price=200.0, bars=[friday_bar]))
+    # Thursday: GTC limit buy, 50 x $200 = $10,000 committed.
+    views.paper_order_view(svc, "AAPL", "buy", 50, type="limit", limit=200,
+                           tif="gtc", now=_at(day_offset=-1))
+    # Friday: placing the next order settles the GTC one against the
+    # Friday bar (fills at $199) - it now counts toward Friday's spend.
+    views.paper_order_view(svc, "AAPL", "buy", 50, type="limit", limit=200, now=_at(0))
+    with pytest.raises(paper.PaperError, match="daily cap"):
+        views.paper_order_view(svc, "AAPL", "buy", 50, type="limit", limit=200, now=_at(0))
+
+
 # --------------------------------------------------------------------- #
 # E1 - finer-grained EDGAR locking
 # --------------------------------------------------------------------- #

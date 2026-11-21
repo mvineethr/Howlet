@@ -14,9 +14,9 @@ class FilingSummary:
     cik: str
     accession_number: str
     filing_date: date
-    period_of_report: Optional[date]
+    period_of_report: date | None
     primary_doc: str
-    form: Optional[str] = None  # e.g. "13F-HR", "4", "8-K"
+    form: str | None = None  # e.g. "13F-HR", "4", "8-K"
 
     @property
     def accession_no_dashes(self) -> str:
@@ -35,12 +35,17 @@ class FilingSummary:
 class Holding:
     """A single position from a 13F 'information table'.
 
-    `value_usd` is the raw <value> element. Since the SEC's Jan 2023
-    technical amendment, filers report it in whole US dollars (verified
-    live: Berkshire's reported total only matches their ~$263B portfolio
-    when read as dollars). Filings from before 2023 reported it rounded
-    to the nearest $1,000 instead, so values parsed from very old filings
-    are 1000x understated relative to this field's name.
+    `value_usd` is the <value> element normalized to whole US dollars.
+    Since the SEC's Jan 2023 technical amendment, filers report it in
+    whole dollars (verified live: Berkshire's reported total only
+    matches their ~$263B portfolio when read as dollars). Filings from
+    before 2023 reported it rounded to the nearest $1,000 instead, so
+    pre-2023 values are scaled x1000 at parse time (see
+    `EdgarClient._parse_information_table`).
+
+    `put_call` is the <putCall> element when the row is an option
+    ("PUT" or "CALL"); None for a plain long-equity row. Option rows
+    must never be folded into long-equity totals - see `diff.py`.
     """
 
     name_of_issuer: str
@@ -49,7 +54,12 @@ class Holding:
     shares: int
     share_type: str  # "SH" (shares) or "PRN" (principal amount, e.g. bonds)
     investment_discretion: str
-    ticker: Optional[str] = None
+    ticker: str | None = None
+    put_call: str | None = None  # "PUT" / "CALL" / None (long equity)
+
+    @property
+    def is_option(self) -> bool:
+        return self.put_call is not None
 
 
 @dataclass
@@ -70,6 +80,9 @@ class HoldingChange:
     current_value_usd: int
     prior_shares: int
     current_shares: int
+    # True when the prior share count was multiplied by a split factor
+    # before comparing (see diff_holdings(..., split_factors=...)).
+    split_adjusted: bool = False
 
     @property
     def value_change_usd(self) -> int:

@@ -116,3 +116,67 @@ def test_get_fred_snapshot_collects_latest_per_series():
     assert snapshot["fed_funds_rate"]["date"] == "2026-06-01"
     assert "description" in snapshot["fed_funds_rate"]
     assert set(snapshot) == set(macro.FRED_SERIES)
+
+
+# --- Phase 1: defensive parsing + Treasury month fallback ---
+
+@responses.activate
+def test_get_bls_series_skips_malformed_entries():
+    responses.post(
+        macro.BLS_URL,
+        json={
+            "status": "REQUEST_SUCCEEDED",
+            "Results": {
+                "series": [
+                    {
+                        "seriesID": "LNS14000000",
+                        "data": [
+                            {"year": "2026", "periodName": "June", "value": "4.1"},
+                            {"year": "2026", "periodName": "May"},  # no value
+                            {"periodName": "April", "value": "4.0"},  # no year
+                            "not-a-dict",
+                        ],
+                    }
+                ]
+            },
+        },
+    )
+    result = macro.get_bls_series(["LNS14000000"])
+    assert result == {
+        "LNS14000000": [{"year": "2026", "period": "June", "value": "4.1"}]
+    }
+
+
+@responses.activate
+def test_get_fred_series_skips_observations_missing_date():
+    responses.get(
+        macro.FRED_URL,
+        json={
+            "observations": [
+                {"date": "2026-01-01", "value": "27000"},
+                {"value": "26000"},  # no date
+                {"date": None, "value": "25000"},
+            ]
+        },
+    )
+    result = macro.get_fred_series("GDP", api_key="test-key")
+    assert result == [{"date": "2026-01-01", "value": "27000"}]
+
+
+@responses.activate
+def test_get_treasury_yield_curve_falls_back_to_previous_month():
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    current = now.strftime("%Y%m")
+    previous = (now.replace(day=1) - timedelta(days=1)).strftime("%Y%m")
+    responses.get(
+        macro.TREASURY_YIELD_URL.format(yyyymm=current),
+        body=b"<feed></feed>",  # current month not published yet
+    )
+    responses.get(
+        macro.TREASURY_YIELD_URL.format(yyyymm=previous),
+        body=TREASURY_XML.encode(),
+    )
+    result = macro.get_treasury_yield_curve()
+    assert result["date"] == "2026-07-03"  # from the previous month's feed

@@ -118,7 +118,7 @@ def test_extract_shares_outstanding_missing_returns_none():
 
 
 @responses.activate
-def test_ticker_to_cik_and_annual_metrics_end_to_end():
+def test_ticker_to_cik_and_annual_metrics_end_to_end(tmp_path):
     responses.get(
         TICKER_MAP_URL,
         json={"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}},
@@ -127,7 +127,9 @@ def test_ticker_to_cik_and_annual_metrics_end_to_end():
         COMPANY_FACTS_URL.format(cik="0000320193"), json=_facts_payload()
     )
 
-    client = FundamentalsClient(EdgarClient("Test Suite test@example.com"))
+    client = FundamentalsClient(
+        EdgarClient("Test Suite test@example.com"), cache_dir=tmp_path
+    )
     assert client.ticker_to_cik("aapl") == "320193"
     assert client.company_name("AAPL") == "Apple Inc."
     assert client.ticker_to_cik("NOPE") is None
@@ -140,7 +142,7 @@ def test_ticker_to_cik_and_annual_metrics_end_to_end():
 
 
 @responses.activate
-def test_shares_outstanding_end_to_end():
+def test_shares_outstanding_end_to_end(tmp_path):
     responses.get(
         TICKER_MAP_URL,
         json={"0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."}},
@@ -153,7 +155,9 @@ def test_shares_outstanding_end_to_end():
     }
     responses.get(COMPANY_FACTS_URL.format(cik="0000320193"), json=facts)
 
-    client = FundamentalsClient(EdgarClient("Test Suite test@example.com"))
+    client = FundamentalsClient(
+        EdgarClient("Test Suite test@example.com"), cache_dir=tmp_path
+    )
     assert client.shares_outstanding("AAPL") == 14_900_000_000
     assert client.shares_outstanding("NOPE") is None
 
@@ -170,7 +174,7 @@ def test_normalize_company_name_strips_suffix_noise():
     assert normalize_company_name("GROUP 1 AUTOMOTIVE INC") == "GROUP 1 AUTOMOTIVE"
 
 
-def test_name_to_ticker_matches_sec_titles_first_class_wins():
+def test_name_to_ticker_matches_sec_titles_first_class_wins(tmp_path):
     from unittest.mock import MagicMock
 
     from howlet.fundamentals import FundamentalsClient
@@ -183,8 +187,89 @@ def test_name_to_ticker_matches_sec_titles_first_class_wins():
         "1": {"cik_str": 1652044, "ticker": "GOOG", "title": "Alphabet Inc."},
         "2": {"cik_str": 896159, "ticker": "CB", "title": "Chubb Ltd"},
     }
-    f = FundamentalsClient(edgar)
+    # Isolated disk cache: the ticker map is cached on disk for a day,
+    # so a shared cache dir would leak one test's mock into the next.
+    f = FundamentalsClient(edgar, cache_dir=tmp_path)
     assert f.name_to_ticker("CHUBB LIMITED") == "CB"
     assert f.name_to_ticker("CHUBB LTD SWITZ") == "CB"
     assert f.name_to_ticker("ALPHABET INC") == "GOOGL"
     assert f.name_to_ticker("NO SUCH ISSUER CORP") is None
+
+
+# --- Phase 1: 10-K/A preference, guarded floats, ticker-map disk cache ---
+
+def test_annual_series_prefers_amendment_over_original():
+    facts = _facts_payload()
+    revenue = facts["facts"]["us-gaap"][
+        "RevenueFromContractWithCustomerExcludingAssessedTax"
+    ]["units"]["USD"]
+    # A 10-K/A restatement for FY2025, filed later than the original.
+    revenue.append(
+        {"form": "10-K/A", "fp": "FY", "fy": 2025,
+         "start": "2024-09-29", "end": "2025-09-27",
+         "filed": "2025-12-15", "val": 420_000_000_000}
+    )
+    rows = extract_annual_metrics(facts, years=5)
+    assert rows[0].fiscal_year == 2025
+    assert rows[0].revenue == 420_000_000_000  # the amendment, not 416B
+
+
+def test_annual_series_skips_non_numeric_values():
+    facts = _facts_payload()
+    revenue = facts["facts"]["us-gaap"][
+        "RevenueFromContractWithCustomerExcludingAssessedTax"
+    ]["units"]["USD"]
+    # A non-numeric val must not crash extraction; the good rows survive.
+    revenue.append(
+        {"form": "10-K", "fp": "FY", "fy": 2023,
+         "start": "2022-10-01", "end": "2023-09-30",
+         "filed": "2023-11-01", "val": "not-a-number"}
+    )
+    rows = extract_annual_metrics(facts, years=5)
+    assert [r.fiscal_year for r in rows] == [2025, 2024]
+
+
+def test_extract_shares_outstanding_skips_non_numeric_values():
+    facts = {
+        "facts": {
+            "dei": {
+                "EntityCommonStockSharesOutstanding": {
+                    "units": {
+                        "shares": [
+                            {"end": "2025-10-15", "val": "n/a"},
+                            {"end": "2025-06-30", "val": 15_200_000_000},
+                        ]
+                    }
+                }
+            }
+        }
+    }
+    assert extract_shares_outstanding(facts) == 15_200_000_000
+
+
+def test_ticker_map_is_cached_on_disk_across_clients(tmp_path):
+    import json
+    import time
+    from unittest.mock import MagicMock
+
+    edgar = MagicMock()
+    edgar._get.return_value.json.return_value = {
+        "0": {"cik_str": 320193, "ticker": "AAPL", "title": "Apple Inc."},
+    }
+    first = FundamentalsClient(edgar, cache_dir=tmp_path)
+    assert first.ticker_to_cik("AAPL") == "320193"
+    assert edgar._get.call_count == 1
+
+    # A second client with the same cache dir reads the disk copy.
+    second = FundamentalsClient(edgar, cache_dir=tmp_path)
+    assert second.ticker_to_cik("AAPL") == "320193"
+    assert edgar._get.call_count == 1
+
+    # A stale disk file (older than the 24h TTL) is refetched.
+    path = tmp_path / "ticker_map.json"
+    payload = json.loads(path.read_text())
+    payload["fetched_at"] = time.time() - 25 * 3600
+    path.write_text(json.dumps(payload))
+    third = FundamentalsClient(edgar, cache_dir=tmp_path)
+    assert third.ticker_to_cik("AAPL") == "320193"
+    assert edgar._get.call_count == 2

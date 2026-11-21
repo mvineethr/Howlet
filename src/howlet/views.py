@@ -303,7 +303,11 @@ def portfolio_view(svc: Services, identifier: str, top: int = 25) -> dict:
         },
     )
     symbols = sorted({t for t in tickers.values() if t})
-    quotes = svc.market.get_quotes(symbols)
+    # with_history=True: the holdings table renders each row's 1M
+    # sparkline from q.sparkline, and the batch quote path carries no
+    # history. Costs one chart request per symbol (pre-Phase-4 behavior
+    # for this caller) in exchange for non-blank charts.
+    quotes = svc.market.get_quotes(symbols, with_history=True)
 
     for r in top_rows:
         ticker = tickers.get(r["cusip"])

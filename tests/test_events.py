@@ -9,9 +9,9 @@ import responses
 
 from howlet.client import EdgarClient
 from howlet.events import (
-    CorporateEventsClient,
     FED_PRESS_RSS,
     FED_SPEECHES_RSS,
+    CorporateEventsClient,
     get_fed_events,
     get_shareholder_meetings,
 )
@@ -94,3 +94,55 @@ def test_get_fed_events_merges_press_and_speeches():
     items = get_fed_events(limit=10)
     assert len(items) == 1
     assert items[0].source == "Fed Press"
+
+
+# --- Phase 2: shared _dedupe_and_sort dedupes across feeds (B11) ---
+
+@responses.activate
+def test_get_fed_events_dedupes_shared_items_across_feeds():
+    shared = """<item><title>FOMC minutes</title><link>https://fed.gov/shared</link>
+      <pubDate>Mon, 06 Jul 2026 12:00:00 GMT</pubDate></item>"""
+    press = f"""<?xml version="1.0"?><rss version="2.0"><channel>
+      {shared}
+      <item><title>Press release</title><link>https://fed.gov/press-only</link>
+      <pubDate>Sun, 05 Jul 2026 12:00:00 GMT</pubDate></item>
+    </channel></rss>"""
+    speeches = f"""<?xml version="1.0"?><rss version="2.0"><channel>
+      {shared}
+      <item><title>Speech</title><link>https://fed.gov/speech-only</link>
+      <pubDate>Sat, 04 Jul 2026 12:00:00 GMT</pubDate></item>
+    </channel></rss>"""
+    responses.get(FED_PRESS_RSS, body=press)
+    responses.get(FED_SPEECHES_RSS, body=speeches)
+
+    items = get_fed_events(limit=10)
+    links = [i.link for i in items]
+    assert links.count("https://fed.gov/shared") == 1
+    assert len(items) == 3
+    # Newest first.
+    assert links[0] == "https://fed.gov/shared"
+
+
+# --- Phase 1: parallel-array length guard (A12) ---
+
+@responses.activate
+def test_get_shareholder_meetings_skips_rows_with_short_arrays():
+    responses.get(
+        "https://data.sec.gov/submissions/CIK0001067983.json",
+        json={
+            "filings": {
+                "recent": {
+                    "form": ["DEF 14A", "DEF 14A", "DEF 14A"],
+                    "filingDate": ["2026-03-15", "2025-03-10"],
+                    "accessionNumber": ["a2", "a4"],
+                    "primaryDocument": ["d2.htm"],  # short: only 1 entry
+                }
+            }
+        },
+    )
+    from howlet.client import EdgarClient
+
+    client = EdgarClient("Test Suite test@example.com")
+    meetings = get_shareholder_meetings(client, "1067983", limit=5)
+    # Only the first row has all four arrays aligned; the rest are skipped.
+    assert [m["accession_number"] for m in meetings] == ["a2"]

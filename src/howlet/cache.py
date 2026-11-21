@@ -18,30 +18,56 @@ from .form4 import InsiderTransaction, get_form4_transactions
 from .models import FilingSummary, Holding
 from .tickers import default_cache_dir
 
+# Bump whenever a parser change makes previously cached rows wrong
+# (e.g. the 13F put/call + pre-2023 thousands fixes): caches written by
+# an older version are ignored and re-fetched instead of served stale.
+CACHE_VERSION = 2
+
+
+def _versioned(payload: dict) -> dict:
+    return {"version": CACHE_VERSION, **payload}
+
+
+def _unversioned(raw) -> dict | None:
+    """Payload dict when `raw` is a current-version cache file, else None.
+
+    Old cache files (bare list/dict with no "version" key) are treated
+    as version 1 and invalidated, so a parser fix can't keep serving
+    rows written by the old parser.
+    """
+    if not isinstance(raw, dict) or raw.get("version") != CACHE_VERSION:
+        return None
+    return raw
+
 
 class FilingCache:
     """One JSON file of parsed holdings per accession number."""
 
-    def __init__(self, cache_dir: Optional[Path] = None):
+    def __init__(self, cache_dir: Path | None = None):
         base = Path(cache_dir) if cache_dir else default_cache_dir()
         self.holdings_dir = base / "holdings"
 
     def _path(self, accession_number: str) -> Path:
         return self.holdings_dir / f"{accession_number.replace('-', '')}.json"
 
-    def get_holdings(self, accession_number: str) -> Optional[list[Holding]]:
+    def get_holdings(self, accession_number: str) -> list[Holding] | None:
         try:
             with open(self._path(accession_number), encoding="utf-8") as f:
                 raw = json.load(f)
-            return [Holding(**entry) for entry in raw]
-        except (OSError, ValueError, TypeError):
+            payload = _unversioned(raw)
+            if payload is None:
+                return None
+            return [Holding(**entry) for entry in payload["holdings"]]
+        except (OSError, ValueError, TypeError, KeyError):
             return None
 
     def put_holdings(self, accession_number: str, holdings: list[Holding]) -> None:
         try:
             self.holdings_dir.mkdir(parents=True, exist_ok=True)
             with open(self._path(accession_number), "w", encoding="utf-8") as f:
-                json.dump([asdict(h) for h in holdings], f)
+                json.dump(
+                    _versioned({"holdings": [asdict(h) for h in holdings]}), f
+                )
         except OSError:
             pass  # cache is an optimization, never a failure
 
@@ -49,7 +75,7 @@ class FilingCache:
 class Form4Cache:
     """One JSON file of parsed insider transactions per accession number."""
 
-    def __init__(self, cache_dir: Optional[Path] = None):
+    def __init__(self, cache_dir: Path | None = None):
         base = Path(cache_dir) if cache_dir else default_cache_dir()
         self.form4_dir = base / "form4"
 
@@ -58,12 +84,15 @@ class Form4Cache:
 
     def get_transactions(
         self, accession_number: str
-    ) -> Optional[list[InsiderTransaction]]:
+    ) -> list[InsiderTransaction] | None:
         try:
             with open(self._path(accession_number), encoding="utf-8") as f:
                 raw = json.load(f)
-            return [InsiderTransaction(**entry) for entry in raw]
-        except (OSError, ValueError, TypeError):
+            payload = _unversioned(raw)
+            if payload is None:
+                return None
+            return [InsiderTransaction(**entry) for entry in payload["transactions"]]
+        except (OSError, ValueError, TypeError, KeyError):
             return None
 
     def put_transactions(
@@ -72,13 +101,15 @@ class Form4Cache:
         try:
             self.form4_dir.mkdir(parents=True, exist_ok=True)
             with open(self._path(accession_number), "w", encoding="utf-8") as f:
-                json.dump([asdict(t) for t in transactions], f)
+                json.dump(
+                    _versioned({"transactions": [asdict(t) for t in transactions]}), f
+                )
         except OSError:
             pass  # cache is an optimization, never a failure
 
 
 def cached_form4_transactions(
-    client: EdgarClient, cache: Optional[Form4Cache], filing: FilingSummary
+    client: EdgarClient, cache: Form4Cache | None, filing: FilingSummary
 ) -> list[InsiderTransaction]:
     """Fetch a Form 4's transactions through the cache (if provided)."""
     if cache is not None:
@@ -92,7 +123,7 @@ def cached_form4_transactions(
 
 
 def cached_information_table(
-    client: EdgarClient, cache: Optional[FilingCache], filing: FilingSummary
+    client: EdgarClient, cache: FilingCache | None, filing: FilingSummary
 ) -> list[Holding]:
     """Fetch a filing's holdings through the cache (if one is provided)."""
     if cache is not None:

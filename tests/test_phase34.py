@@ -198,7 +198,11 @@ def test_locked_serializes_processes(tmp_path):
                 "account": {"id": "base", "created": "2026-01-01T00:00:00+00:00",
                             "start_cash": 100_000},
                 "orders": [], "archive": []})
-    ctx = mp.get_context("fork")
+    # Default start method: fork on POSIX, spawn on Windows (there is no
+    # fork on Windows - mp.get_context("fork") raises ValueError there).
+    # The lock under test is start-method agnostic; _lock_worker is a
+    # top-level function so spawn can pickle it by reference.
+    ctx = mp.get_context()
     procs = [ctx.Process(target=_lock_worker, args=(tmp_path, f"p{n}"))
              for n in range(2)]
     for p in procs:

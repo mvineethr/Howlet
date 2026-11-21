@@ -50,3 +50,80 @@ def test_screener_cache_round_trip(tmp_path):
     assert cache.get("AAPL", "2026-07-06") == {"symbol": "AAPL", "price": 200.0}
     # A different day is a cache miss even for the same symbol.
     assert cache.get("AAPL", "2026-07-07") is None
+
+
+# --- Phase 2: write-once cache (B3) + per-symbol guard (B6) ---
+
+def test_screener_cache_put_does_not_write_until_save(tmp_path):
+    cache = ScreenerCache(cache_dir=tmp_path)
+    cache.put("AAPL", "2026-07-06", {"symbol": "AAPL", "price": 200.0})
+    cache.put("MSFT", "2026-07-06", {"symbol": "MSFT", "price": 300.0})
+    # Puts are in-memory only: no file yet after two puts.
+    assert not cache.path.exists()
+    cache.save()
+    assert cache.path.exists()
+    # A fresh instance reads back what save() wrote.
+    fresh = ScreenerCache(cache_dir=tmp_path)
+    assert fresh.get("AAPL", "2026-07-06") == {"symbol": "AAPL", "price": 200.0}
+    assert fresh.get("MSFT", "2026-07-06") == {"symbol": "MSFT", "price": 300.0}
+
+
+def test_screener_cache_save_is_noop_when_nothing_changed(tmp_path):
+    cache = ScreenerCache(cache_dir=tmp_path)
+    cache.save()  # nothing put: no file, no error
+    assert not cache.path.exists()
+
+
+def test_screen_skips_symbol_whose_facts_fetch_fails(tmp_path):
+    from unittest.mock import MagicMock
+
+    import requests
+
+    from howlet.market import Quote
+    from howlet.screener import screen
+
+    market = MagicMock()
+    market.get_quote.side_effect = lambda symbol, **kw: Quote(
+        symbol=symbol, price=100.0, previous_close=99.0
+    )
+    fundamentals = MagicMock()
+    fundamentals.ticker_to_cik.side_effect = lambda symbol: "0000320193"
+    fundamentals.get_company_facts.side_effect = requests.ConnectionError(
+        "SEC hiccup"
+    )
+
+    # Every symbol's facts fetch fails: the screen is empty, not an exception.
+    rows = screen(market, fundamentals, universe=["AAPL", "MSFT"], cache=None)
+    assert rows == []
+
+
+def test_screen_keeps_good_symbols_when_one_fails(tmp_path):
+    from unittest.mock import MagicMock
+
+    import requests
+
+    from howlet.market import Quote
+    from howlet.screener import screen
+
+    market = MagicMock()
+    market.get_quote.side_effect = lambda symbol, **kw: Quote(
+        symbol=symbol, price=100.0, previous_close=99.0
+    )
+    fundamentals = MagicMock()
+    fundamentals.ticker_to_cik.side_effect = {
+        "AAPL": "0000320193",
+        "MSFT": "0000789019",
+    }.get
+    def facts(cik):
+        if cik == "0000789019":
+            raise requests.ConnectionError("SEC hiccup")
+        return {"facts": {}}
+    fundamentals.get_company_facts.side_effect = facts
+
+    cache = ScreenerCache(cache_dir=tmp_path)
+    rows = screen(
+        market, fundamentals, universe=["AAPL", "MSFT"], cache=cache
+    )
+    assert [r.symbol for r in rows] == ["AAPL"]
+    # The run wrote the cache file once at the end.
+    assert cache.path.exists()

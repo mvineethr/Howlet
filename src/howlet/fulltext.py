@@ -22,7 +22,7 @@ FULLTEXT_SEARCH_URL = "https://efts.sec.gov/LATEST/search-index"
 def search_filings(
     client: EdgarClient,
     query: str,
-    forms: Optional[list[str]] = None,
+    forms: list[str] | None = None,
     limit: int = 20,
 ) -> list[dict]:
     """Full-text search across EDGAR filings. Quote a phrase for exact

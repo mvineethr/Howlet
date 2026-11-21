@@ -8,13 +8,13 @@ import { useApi } from "../lib/useApi";
 import { api } from "../lib/api";
 import { parseNum } from "../lib/paper";
 import { useSettings, PAGE_IDS, type PageId, type Settings } from "../lib/settings";
-import { PAGE_META } from "../shell/Rail";
+import { PAGE_META } from "../shell/NavTabs";
 import { resetHome } from "../lib/homeState";
 import { firstRunHome } from "../blocks/registry";
 import { ACCENT_SWATCHES } from "../theme/tokens";
 
 const RANGES = ["1mo", "3mo", "6mo", "1y", "5y"];
-const SHORTCUTS: [string, string][] = [["Ctrl+K", "Search or command"], ["Ctrl+1 … Ctrl+7", "Jump to rail page"], ["Esc", "Close / clear"], ["Alt+←", "Back"]];
+const SHORTCUTS: [string, string][] = [["Ctrl+K", "Search or command"], ["Ctrl+1 … Ctrl+7", "Jump to tab"], ["Esc", "Close / clear"], ["Alt+←", "Back"]];
 
 function TrackedManagers() {
   const { settings: s, update } = useSettings();
@@ -134,7 +134,7 @@ export default function SettingsPage() {
         </RadioGroup></Field>
       </Card>
 
-      <Card><Subtitle2>Rail</Subtitle2>
+      <Card><Subtitle2>Tabs</Subtitle2>
         {s.railOrder.map((p, i) => {
           const locked = p === "home" || p === "settings";
           return (
@@ -180,7 +180,7 @@ export default function SettingsPage() {
       </Card>
 
       <Card><Subtitle2>Help &amp; glossary</Subtitle2>
-        <Text>What every short form means, the command box, rail pages and Home blocks.</Text>
+        <Text>What every short form means, the command box, tabs and Home blocks.</Text>
         <div><Button onClick={() => go({ kind: "page", page: "settings", params: ["help"] })}>Open help</Button></div>
       </Card>
 

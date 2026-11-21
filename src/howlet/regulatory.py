@@ -22,7 +22,7 @@ _SEC_AGENCY_SLUG = "securities-and-exchange-commission"
 
 
 def get_sec_documents(
-    limit: int = 20, session: Optional[requests.Session] = None
+    limit: int = 20, session: requests.Session | None = None
 ) -> list[dict]:
     """Newest SEC documents in the Federal Register. [] on any failure.
 

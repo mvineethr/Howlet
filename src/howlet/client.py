@@ -9,6 +9,8 @@ Reference: https://www.sec.gov/os/webmaster-faq#developers
 
 from __future__ import annotations
 
+import html as html_lib
+import re
 import time
 from datetime import date, datetime
 from typing import Optional
@@ -30,6 +32,83 @@ _MIN_INTERVAL_SECONDS = 0.12
 # exponentially, honoring a Retry-After header if SEC sends one.
 _MAX_RETRIES = 3
 _RETRY_BACKOFF_BASE_SECONDS = 1.0
+
+# The Form 13F cover page (SEC Form 13F, Special Instruction 3) makes an
+# amendment check exactly one of two boxes: "is a restatement." or "adds
+# new holdings entries." No structured EDGAR field carries this - the
+# submissions data and the information table are both silent - so the
+# checked box on the cover page is the only signal. Filers render the
+# checked box as [X], an X in a table cell, or a ballot-box glyph;
+# anything else is unclassifiable and treated as a restatement (the
+# previous behavior), so an unreadable cover page never invents a merge.
+_AMENDMENT_KIND_LABELS = (
+    ("restatement", "is a restatement"),
+    ("adds", "adds new holdings entries"),
+)
+_CHECKED_BOX_RE = re.compile(r"(\[\s*x\s*\]|[☒☑✓✔])\s*$", re.IGNORECASE)
+
+
+def _cover_box_checked(before: str) -> bool:
+    """True if the text just before a cover-page label marks its box checked."""
+    tail = before.rstrip()
+    if _CHECKED_BOX_RE.search(tail):
+        return True
+    lines = tail.splitlines()
+    return bool(lines) and lines[-1].strip().lower() == "x"
+
+
+def _classify_amendment_cover(text: str) -> str | None:
+    """'restatement' | 'adds' from a 13F-HR/A cover page, else None.
+
+    Exactly one of the two amendment boxes must read as checked; both
+    checked, neither checked, or a missing label all mean "cannot tell".
+    """
+    plain = html_lib.unescape(re.sub(r"<[^>]+>", "\n", text)).lower()
+    checked = []
+    for kind, label in _AMENDMENT_KIND_LABELS:
+        at = plain.find(label)
+        if at < 0:
+            continue
+        if _cover_box_checked(plain[:at]):
+            checked.append(kind)
+    return checked[0] if len(checked) == 1 else None
+
+
+def _merge_holdings(base: list[Holding], added: list[Holding]) -> list[Holding]:
+    """Union of two holding lists for an adds-new-holdings amendment.
+
+    An added row replaces the base row it updates - the amendment is
+    the newer information - and anything else is appended. Rows are
+    matched on CUSIP, class, put/call and discretion; when several
+    base rows share those, voting authority disambiguates them. The
+    match uses the voting *pattern* (which of sole/shared/none are
+    nonzero), not the vote counts: the same position with updated
+    share counts has different counts but the same pattern. One
+    filing can list the same CUSIP several times with different
+    voting splits, and collapsing those rows would understate shares
+    and value. When no single row matches, the added row is appended
+    rather than deleting a row it cannot be identified with.
+    """
+    def base_key(h: Holding) -> tuple:
+        return (h.cusip, h.share_type, h.put_call, h.investment_discretion)
+
+    def voting_pattern(h: Holding) -> tuple:
+        return (h.voting_sole > 0, h.voting_shared > 0, h.voting_none > 0)
+
+    merged = list(base)
+    for h in added:
+        same = [i for i, b in enumerate(merged) if base_key(b) == base_key(h)]
+        if len(same) == 1:
+            merged[same[0]] = h
+            continue
+        if len(same) > 1:
+            match = [i for i in same
+                     if voting_pattern(merged[i]) == voting_pattern(h)]
+            if len(match) == 1:
+                merged[match[0]] = h
+                continue
+        merged.append(h)
+    return merged
 
 
 class EdgarClient:
@@ -262,6 +341,24 @@ class EdgarClient:
         )
         return merged[:limit]
 
+    def amendment_kind(self, filing: FilingSummary) -> str | None:
+        """'restatement' | 'adds' for a 13F-HR/A filing, else None.
+
+        Reads the filing's cover page (the primary document) and
+        classifies its amendment checkbox - the only place the kind is
+        recorded. Any fetch or parse failure returns None: callers treat
+        an unclassifiable amendment as a restatement. Only meaningful
+        for 13F-HR/A filings; other forms return None.
+        """
+        if filing.form != "13F-HR/A":
+            return None
+        try:
+            resp = self._get(f"{filing.filing_index_url}{filing.primary_doc}")
+            text = resp.content.decode("utf-8", errors="replace")
+        except Exception:
+            return None
+        return _classify_amendment_cover(text)
+
     # ------------------------------------------------------------------ #
     # holdings (the actual "information table")
     # ------------------------------------------------------------------ #
@@ -272,7 +369,67 @@ class EdgarClient:
         Every 13F-HR bundles a primary doc (human-readable cover page) plus
         a separate XML "information table" with the actual positions. This
         finds that second file in the filing's index and parses it.
+
+        For a 13F-HR/A amendment the returned table is the period's final
+        table, not just the amendment's own rows: a restatement replaces
+        the original outright, while an amendment that adds new holdings
+        entries is merged onto the original (SEC Form 13F, Special
+        Instruction 3 - the cover page says which kind it is). An
+        amendment whose kind cannot be read from its cover page is
+        treated as a restatement, the previous behavior.
         """
+        holdings = self._information_table_for(filing)
+        if filing.form != "13F-HR/A" or filing.period_of_report is None:
+            return holdings
+        return self._resolve_amendment_holdings(filing, holdings)
+
+    def _resolve_amendment_holdings(
+        self, filing: FilingSummary, amendment_holdings: list[Holding]
+    ) -> list[Holding]:
+        """Fold a period's filings into the final holdings table.
+
+        Amendments for the period are applied oldest first on top of the
+        original report: a restatement (or an amendment whose kind cannot
+        be read) replaces the running table; an adds-new-holdings
+        amendment merges its rows onto it. The original's table is only
+        fetched when the chain actually contains an adds amendment. If
+        the period's chain cannot be reconstructed, the amendment's own
+        table is returned unchanged.
+        """
+        period = filing.period_of_report
+        cik = filing.cik
+        originals = [
+            f for f in self.list_filings(cik, "13F-HR", limit=8)
+            if f.period_of_report == period
+        ]
+        amendments = [
+            f for f in self.list_filings(cik, "13F-HR/A", limit=8)
+            if f.period_of_report == period
+        ]
+        if filing.accession_number not in {a.accession_number for a in amendments}:
+            amendments.append(filing)
+        amendments.sort(key=lambda f: (f.filing_date, f.accession_number))
+        kinds = {a.accession_number: self.amendment_kind(a) for a in amendments}
+        by_accession = {filing.accession_number: amendment_holdings}
+        table: list[Holding] | None = None
+        for amd in amendments:
+            rows = by_accession.get(amd.accession_number)
+            if rows is None:
+                rows = self._information_table_for(amd)
+            if kinds[amd.accession_number] == "adds":
+                if table is None:
+                    table = (
+                        self._information_table_for(originals[0])
+                        if originals
+                        else []
+                    )
+                table = _merge_holdings(table, rows)
+            else:
+                table = rows
+        return table if table is not None else amendment_holdings
+
+    def _information_table_for(self, filing: FilingSummary) -> list[Holding]:
+        """Fetch + parse one filing's own information table, no amendment logic."""
         index_url = f"{filing.filing_index_url}index.json"
         index = self._get(index_url).json()
 
@@ -364,6 +521,9 @@ class EdgarClient:
                     share_type=text("sshPrnamtType") or "",
                     investment_discretion=text("investmentDiscretion") or "",
                     put_call=put_call,
+                    voting_sole=EdgarClient._to_int(text("Sole")),
+                    voting_shared=EdgarClient._to_int(text("Shared")),
+                    voting_none=EdgarClient._to_int(text("None")),
                 )
             )
         return holdings

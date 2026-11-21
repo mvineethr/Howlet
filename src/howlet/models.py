@@ -56,6 +56,13 @@ class Holding:
     investment_discretion: str
     ticker: str | None = None
     put_call: str | None = None  # "PUT" / "CALL" / None (long equity)
+    # Voting authority (<votingAuthority><Sole>/<Shared>/<None>), in
+    # shares. A filing can list the same CUSIP several times with
+    # different voting splits - these fields are part of a row's
+    # identity, so merging amendments must not collapse them.
+    voting_sole: int = 0
+    voting_shared: int = 0
+    voting_none: int = 0
 
     @property
     def is_option(self) -> bool:

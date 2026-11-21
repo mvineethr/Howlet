@@ -8,11 +8,14 @@ rate limits) to catch schema drift.
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 import requests
 import responses
 
 from howlet.client import EdgarClient
+from howlet.models import FilingSummary
 
 SAMPLE_INFO_TABLE_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
 <informationTable xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">
@@ -457,3 +460,308 @@ def test_list_filings_tolerates_missing_filings_key(client: EdgarClient):
         status=200,
     )
     assert client.list_13f_filings("1067983", limit=8) == []
+
+
+# --------------------------------------------------------------------- #
+# 13F-HR/A amendment kinds (Codex review, P1)
+# --------------------------------------------------------------------- #
+
+_MSFT_INFO_TABLE_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<informationTable xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">
+  <infoTable>
+    <nameOfIssuer>MICROSOFT CORP</nameOfIssuer>
+    <cusip>594918104</cusip>
+    <value>10000000</value>
+    <shsPrnAmt>
+      <sshPrnamt>100000</sshPrnamt>
+      <sshPrnamtType>SH</sshPrnamtType>
+    </shsPrnAmt>
+    <investmentDiscretion>SOLE</investmentDiscretion>
+  </infoTable>
+</informationTable>
+"""
+
+_NVDA_INFO_TABLE_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<informationTable xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">
+  <infoTable>
+    <nameOfIssuer>NVIDIA CORP</nameOfIssuer>
+    <cusip>67066G104</cusip>
+    <value>20000000</value>
+    <shsPrnAmt>
+      <sshPrnamt>150000</sshPrnamt>
+      <sshPrnamtType>SH</sshPrnamtType>
+    </shsPrnAmt>
+    <investmentDiscretion>SOLE</investmentDiscretion>
+  </infoTable>
+</informationTable>
+"""
+
+# Same CUSIP twice, same discretion, differing only in voting authority -
+# the Berkshire-style split-voting case (Codex review on PR #3).
+_AAPL_SPLIT_VOTING_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<informationTable xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">
+  <infoTable>
+    <nameOfIssuer>APPLE INC</nameOfIssuer>
+    <cusip>037833100</cusip>
+    <value>10000000</value>
+    <shsPrnAmt>
+      <sshPrnamt>100000</sshPrnamt>
+      <sshPrnamtType>SH</sshPrnamtType>
+    </shsPrnAmt>
+    <investmentDiscretion>SOLE</investmentDiscretion>
+    <votingAuthority><Sole>100000</Sole><Shared>0</Shared><None>0</None></votingAuthority>
+  </infoTable>
+  <infoTable>
+    <nameOfIssuer>APPLE INC</nameOfIssuer>
+    <cusip>037833100</cusip>
+    <value>5000000</value>
+    <shsPrnAmt>
+      <sshPrnamt>50000</sshPrnamt>
+      <sshPrnamtType>SH</sshPrnamtType>
+    </shsPrnAmt>
+    <investmentDiscretion>SOLE</investmentDiscretion>
+    <votingAuthority><Sole>0</Sole><Shared>50000</Shared><None>0</None></votingAuthority>
+  </infoTable>
+</informationTable>
+"""
+
+# Add-on amendment touching only the sole-voting AAPL row.
+_AAPL_ADDS_SOLE_VOTING_XML = b"""<?xml version="1.0" encoding="UTF-8"?>
+<informationTable xmlns="http://www.sec.gov/edgar/document/thirteenf/informationtable">
+  <infoTable>
+    <nameOfIssuer>APPLE INC</nameOfIssuer>
+    <cusip>037833100</cusip>
+    <value>12000000</value>
+    <shsPrnAmt>
+      <sshPrnamt>120000</sshPrnamt>
+      <sshPrnamtType>SH</sshPrnamtType>
+    </shsPrnAmt>
+    <investmentDiscretion>SOLE</investmentDiscretion>
+    <votingAuthority><Sole>120000</Sole><Shared>0</Shared><None>0</None></votingAuthority>
+  </infoTable>
+</informationTable>
+"""
+
+
+def _cover_page_html(checked: str | None) -> bytes:
+    """A 13F cover page with the amendment box marked as given.
+
+    `checked` is "restatement", "adds", or None (neither box checked).
+    """
+    restatement = "[X]" if checked == "restatement" else "[ ]"
+    adds = "[X]" if checked == "adds" else "[ ]"
+    return f"""<html><body>
+<p>Report for the Calendar Year or Quarter Ended: March 31, 2026</p>
+<p>Check here if Amendment [X] Amendment Number: 1</p>
+<p>This Amendment (Check only one.): {restatement} is a restatement.</p>
+<p>{adds} adds new holdings entries.</p>
+</body></html>""".encode()
+
+
+def _register_13f_filing(accession: str, xml: bytes, cover: bytes | None = None,
+                         primary_doc: str = "doc.htm") -> None:
+    """Mock a filing's index.json + information table (+ cover page)."""
+    base = (
+        "https://www.sec.gov/Archives/edgar/data/1067983/"
+        f"{accession.replace('-', '')}/"
+    )
+    responses.add(
+        responses.GET, base + "index.json",
+        json={"directory": {"item": [{"name": "infotable.xml"}, {"name": primary_doc}]}},
+        status=200,
+    )
+    responses.add(responses.GET, base + "infotable.xml", body=xml, status=200)
+    if cover is not None:
+        responses.add(responses.GET, base + primary_doc, body=cover, status=200)
+
+
+def _amendment_submissions(*rows) -> dict:
+    """Submissions fixture for one period; rows are
+    (form, accession, filing_date, primary_doc). All 2026-03-31."""
+    return {"filings": {"recent": {
+        "form": [r[0] for r in rows],
+        "accessionNumber": [r[1] for r in rows],
+        "filingDate": [r[2] for r in rows],
+        "reportDate": ["2026-03-31"] * len(rows),
+        "primaryDocument": [r[3] for r in rows],
+    }}}
+
+
+def _filing(accession: str, filing_date: str, form: str) -> FilingSummary:
+    return FilingSummary(
+        cik="0001067983", accession_number=accession,
+        filing_date=date.fromisoformat(filing_date),
+        period_of_report=date(2026, 3, 31),
+        primary_doc="doc.htm", form=form,
+    )
+
+
+@responses.activate
+def test_amendment_adds_new_holdings_merges_with_original(client: EdgarClient):
+    """An 'adds new holdings entries' amendment is merged onto the
+    original report instead of replacing it (Codex review, P1)."""
+    responses.add(
+        responses.GET, "https://data.sec.gov/submissions/CIK0001067983.json",
+        json=_amendment_submissions(
+            ("13F-HR", "0001-23-000001", "2026-05-15", "doc.htm"),
+            ("13F-HR/A", "0001-23-000002", "2026-06-01", "doc.htm"),
+        ),
+        status=200,
+    )
+    _register_13f_filing("0001-23-000001", SAMPLE_INFO_TABLE_XML)
+    _register_13f_filing("0001-23-000002", _MSFT_INFO_TABLE_XML,
+                         cover=_cover_page_html("adds"))
+
+    holdings = client.get_information_table(_filing("0001-23-000002", "2026-06-01", "13F-HR/A"))
+
+    assert [h.cusip for h in holdings] == ["037833100", "191216100", "594918104"]
+
+
+@responses.activate
+def test_amendment_adds_keeps_split_voting_rows(client: EdgarClient):
+    """An adds amendment must not collapse base rows that differ only
+    in voting authority (Codex review on PR #3): the two AAPL rows
+    survive the merge, and only the sole-voting row is replaced by
+    the amendment's row."""
+    responses.add(
+        responses.GET, "https://data.sec.gov/submissions/CIK0001067983.json",
+        json=_amendment_submissions(
+            ("13F-HR", "0001-23-000001", "2026-05-15", "doc.htm"),
+            ("13F-HR/A", "0001-23-000002", "2026-06-01", "doc.htm"),
+        ),
+        status=200,
+    )
+    _register_13f_filing("0001-23-000001", _AAPL_SPLIT_VOTING_XML)
+    _register_13f_filing("0001-23-000002", _AAPL_ADDS_SOLE_VOTING_XML,
+                         cover=_cover_page_html("adds"))
+
+    holdings = client.get_information_table(_filing("0001-23-000002", "2026-06-01", "13F-HR/A"))
+
+    assert len(holdings) == 2
+    assert sorted(h.shares for h in holdings) == [50000, 120000]
+    assert sum(h.shares for h in holdings) == 170000
+
+
+@responses.activate
+def test_amendment_restatement_replaces_original(client: EdgarClient):
+    """A restatement amendment replaces the original report outright."""
+    responses.add(
+        responses.GET, "https://data.sec.gov/submissions/CIK0001067983.json",
+        json=_amendment_submissions(
+            ("13F-HR", "0001-23-000001", "2026-05-15", "doc.htm"),
+            ("13F-HR/A", "0001-23-000002", "2026-06-01", "doc.htm"),
+        ),
+        status=200,
+    )
+    _register_13f_filing("0001-23-000001", SAMPLE_INFO_TABLE_XML)
+    _register_13f_filing("0001-23-000002", _MSFT_INFO_TABLE_XML,
+                         cover=_cover_page_html("restatement"))
+
+    holdings = client.get_information_table(_filing("0001-23-000002", "2026-06-01", "13F-HR/A"))
+
+    assert [h.cusip for h in holdings] == ["594918104"]
+
+
+@responses.activate
+def test_amendment_unreadable_cover_page_replaces_original(client: EdgarClient):
+    """An amendment whose kind cannot be read from its cover page is
+    treated as a restatement - the previous behavior, never a guessed merge."""
+    responses.add(
+        responses.GET, "https://data.sec.gov/submissions/CIK0001067983.json",
+        json=_amendment_submissions(
+            ("13F-HR", "0001-23-000001", "2026-05-15", "doc.htm"),
+            ("13F-HR/A", "0001-23-000002", "2026-06-01", "doc.htm"),
+        ),
+        status=200,
+    )
+    _register_13f_filing("0001-23-000001", SAMPLE_INFO_TABLE_XML)
+    _register_13f_filing("0001-23-000002", _MSFT_INFO_TABLE_XML,
+                         cover=_cover_page_html(None))
+
+    holdings = client.get_information_table(_filing("0001-23-000002", "2026-06-01", "13F-HR/A"))
+
+    assert [h.cusip for h in holdings] == ["594918104"]
+
+
+@responses.activate
+def test_amendment_chain_folds_oldest_first(client: EdgarClient):
+    """Two amendments for one period apply in filing order: an adds
+    amendment merges, a later restatement replaces everything before it."""
+    responses.add(
+        responses.GET, "https://data.sec.gov/submissions/CIK0001067983.json",
+        json=_amendment_submissions(
+            ("13F-HR", "0001-23-000001", "2026-05-15", "doc.htm"),
+            ("13F-HR/A", "0001-23-000002", "2026-06-01", "doc.htm"),
+            ("13F-HR/A", "0001-23-000003", "2026-07-01", "doc.htm"),
+        ),
+        status=200,
+    )
+    _register_13f_filing("0001-23-000001", SAMPLE_INFO_TABLE_XML)
+    _register_13f_filing("0001-23-000002", _MSFT_INFO_TABLE_XML,
+                         cover=_cover_page_html("adds"))
+    _register_13f_filing("0001-23-000003", _NVDA_INFO_TABLE_XML,
+                         cover=_cover_page_html("restatement"))
+
+    holdings = client.get_information_table(_filing("0001-23-000003", "2026-07-01", "13F-HR/A"))
+
+    assert [h.cusip for h in holdings] == ["67066G104"]
+
+
+@responses.activate
+def test_amendment_chain_restatement_then_adds(client: EdgarClient):
+    """A restatement followed by an adds amendment: the restated table
+    plus the later added rows (the pre-restatement rows stay dropped)."""
+    responses.add(
+        responses.GET, "https://data.sec.gov/submissions/CIK0001067983.json",
+        json=_amendment_submissions(
+            ("13F-HR", "0001-23-000001", "2026-05-15", "doc.htm"),
+            ("13F-HR/A", "0001-23-000002", "2026-06-01", "doc.htm"),
+            ("13F-HR/A", "0001-23-000003", "2026-07-01", "doc.htm"),
+        ),
+        status=200,
+    )
+    _register_13f_filing("0001-23-000001", SAMPLE_INFO_TABLE_XML)
+    _register_13f_filing("0001-23-000002", _NVDA_INFO_TABLE_XML,
+                         cover=_cover_page_html("restatement"))
+    _register_13f_filing("0001-23-000003", _MSFT_INFO_TABLE_XML,
+                         cover=_cover_page_html("adds"))
+
+    holdings = client.get_information_table(_filing("0001-23-000003", "2026-07-01", "13F-HR/A"))
+
+    assert [h.cusip for h in holdings] == ["67066G104", "594918104"]
+
+
+def test_classify_amendment_cover_bracket_style():
+    """[X] / [ ] boxes next to the two prescribed labels."""
+    from howlet.client import _classify_amendment_cover
+
+    adds = """Check here if Amendment [X] Amendment Number: 1
+    This Amendment (Check only one.): [ ] is a restatement.
+    [X] adds new holdings entries."""
+    assert _classify_amendment_cover(adds) == "adds"
+
+    restatement = """Check here if Amendment [X] Amendment Number: 1
+    This Amendment (Check only one.): [X] is a restatement.
+    [ ] adds new holdings entries."""
+    assert _classify_amendment_cover(restatement) == "restatement"
+
+
+def test_classify_amendment_cover_table_cell_x():
+    """HTML table rendering: the checked box is a lone X in its own cell."""
+    from howlet.client import _classify_amendment_cover
+
+    html = """<table><tr><td>This Amendment (Check only one.):</td></tr>
+    <tr><td>X</td><td>is a restatement.</td></tr>
+    <tr><td></td><td>adds new holdings entries.</td></tr></table>"""
+    assert _classify_amendment_cover(html) == "restatement"
+
+
+def test_classify_amendment_cover_unclassifiable():
+    """Neither box checked, both checked, or no labels: None, never a guess."""
+    from howlet.client import _classify_amendment_cover
+
+    neither = "This Amendment (Check only one.): [ ] is a restatement. [ ] adds new holdings entries."
+    assert _classify_amendment_cover(neither) is None
+    both = "This Amendment (Check only one.): [X] is a restatement. [X] adds new holdings entries."
+    assert _classify_amendment_cover(both) is None
+    assert _classify_amendment_cover("Report for the quarter ended March 31, 2026.") is None

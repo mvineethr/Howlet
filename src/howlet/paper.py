@@ -6,6 +6,12 @@ replaying fills. `settle()` runs before every read and fills or expires
 open orders from the price bars that began after each order was placed,
 so orders fill correctly even while the app was closed. This module does
 no network I/O except through the `prices` object passed in.
+
+Fees and slippage are OFF by default (both zero, so existing accounts
+behave exactly as before) and configurable per account: a flat fee per
+fill (`HOWLET_PAPER_FEE_USD`) and slippage in basis points
+(`HOWLET_PAPER_SLIPPAGE_BPS`, paid on the fill price - buys fill higher,
+sells fill lower). See `paper_costs()`.
 """
 
 from __future__ import annotations
@@ -14,17 +20,37 @@ import json
 import math
 import os
 import re
+import tempfile
 import threading
 import time
 import uuid
+from contextlib import contextmanager, suppress
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import NamedTuple, Optional
+
+if os.name == "nt":  # pragma: no cover - Windows-only branch
+    import msvcrt
+else:
+    import fcntl
 
 from .market import Quote
 from .tickers import default_cache_dir
 
 DEFAULT_START_CASH = 100_000.0
+# Paper-trading spending caps (Phase 3, D2): an agent (or a fat finger)
+# must not be able to spend the whole fake $100k in one order or one day.
+# Configurable via HOWLET_PAPER_MAX_ORDER_USD / HOWLET_PAPER_MAX_DAILY_USD;
+# see spending_caps(). Caps apply to BUY orders only: a sell returns cash,
+# it doesn't spend it, and blocking an exit would trap the user.
+DEFAULT_MAX_ORDER_USD = 10_000.0
+DEFAULT_MAX_DAILY_USD = 25_000.0
+# Paper-trading costs (Phase 5, C4): off by default, so existing
+# accounts behave exactly as before. A flat fee per fill plus slippage
+# in basis points on the fill price. Configurable via
+# HOWLET_PAPER_FEE_USD / HOWLET_PAPER_SLIPPAGE_BPS; see paper_costs().
+DEFAULT_FEE_PER_TRADE_USD = 0.0
+DEFAULT_SLIPPAGE_BPS = 0.0
 GTC_DAYS = 90
 # Yahoo serves 5m bars for range=60d; range=3mo returns nothing (verified live 2026-10-24).
 INTRADAY_LOOKBACK_DAYS = 59
@@ -34,8 +60,164 @@ TRADABLE_TYPES = {"EQUITY", "ETF", "STOCKS"}  # STOCKS: Nasdaq fallback assetCla
 _SYMBOL_RE = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
 _EPS = 1e-9
 
-# shortcut: per-process only; cross-process writes are rare (fills only) - upgrade to a file lock if it ever matters.
-LOCK = threading.Lock()  # one read-settle-write at a time (Flask is threaded)
+# One read-settle-write at a time within this process (Flask is threaded).
+LOCK = threading.Lock()
+
+
+@contextmanager
+def _file_lock(lock_path: Path):
+    """Exclusive cross-process lock on `lock_path` (stdlib only).
+
+    flock on POSIX, msvcrt.locking on Windows. The lock file is never
+    the data file itself: save() replaces paper.json atomically, so a
+    lock held on the data file would not survive the replace.
+    """
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "a+b") as fh:
+        try:
+            if os.name == "nt":  # pragma: no cover - Windows-only branch
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            yield
+        finally:
+            # Unlock first; the `with` closes fh afterwards, same order
+            # as the old explicit close.
+            if os.name == "nt":  # pragma: no cover - Windows-only branch
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+@contextmanager
+def locked(store: PaperStore):
+    """Hold the threading lock AND the cross-process file lock.
+
+    Every read-settle-write cycle on the paper account must go through
+    this (views.paper_*_view do). Threading lock first, file lock second,
+    everywhere - the one acquisition order means no deadlock. Within a
+    process the threading lock serializes threads, so only one thread at
+    a time ever attempts the file lock (flock would block a second
+    descriptor from the same process). Across processes (CLI + dashboard
+    together) the file lock serializes the cycles, so a concurrent
+    read-settle-write can no longer lose an order.
+    """
+    with LOCK, _file_lock(store.path.with_name("paper.json.lock")):
+        yield
+
+
+def spending_caps(max_order_usd=None, max_daily_usd=None) -> tuple[float, float]:
+    """(per-order, daily) paper-spending caps in USD.
+
+    Explicit arguments win, then HOWLET_PAPER_MAX_ORDER_USD /
+    HOWLET_PAPER_MAX_DAILY_USD, then the defaults ($10,000 / $25,000).
+    """
+    def _resolve(env_name: str, explicit, default: float) -> float:
+        if explicit is not None:
+            value = float(explicit)
+        else:
+            raw = os.environ.get(env_name)
+            if raw is None:
+                return default
+            try:
+                value = float(raw)
+            except ValueError:
+                raise PaperError(f"{env_name} must be a number.") from None
+        if not value > 0:
+            raise PaperError(f"{env_name} must be more than zero.")
+        return value
+
+    return (
+        _resolve("HOWLET_PAPER_MAX_ORDER_USD", max_order_usd, DEFAULT_MAX_ORDER_USD),
+        _resolve("HOWLET_PAPER_MAX_DAILY_USD", max_daily_usd, DEFAULT_MAX_DAILY_USD),
+    )
+
+
+def paper_costs(fee_per_trade_usd=None, slippage_bps=None) -> dict:
+    """{"fee_per_trade_usd": ..., "slippage_bps": ...} for a paper account.
+
+    Explicit arguments win, then HOWLET_PAPER_FEE_USD /
+    HOWLET_PAPER_SLIPPAGE_BPS, then the defaults (both zero: no fees, no
+    slippage). A fee is a flat USD charge per fill; slippage is paid on
+    the fill price in basis points (buys fill higher, sells lower).
+    """
+    def _resolve(env_name: str, explicit, default: float) -> float:
+        if explicit is not None:
+            value = float(explicit)
+        else:
+            raw = os.environ.get(env_name)
+            if raw is None:
+                return default
+            try:
+                value = float(raw)
+            except ValueError:
+                raise PaperError(f"{env_name} must be a number.") from None
+        if value < 0 or not math.isfinite(value):
+            raise PaperError(f"{env_name} must be zero or more.")
+        return value
+
+    return {
+        "fee_per_trade_usd": _resolve(
+            "HOWLET_PAPER_FEE_USD", fee_per_trade_usd, DEFAULT_FEE_PER_TRADE_USD
+        ),
+        "slippage_bps": _resolve(
+            "HOWLET_PAPER_SLIPPAGE_BPS", slippage_bps, DEFAULT_SLIPPAGE_BPS
+        ),
+    }
+
+
+def _fill_price(side: str, raw_price: float, costs: dict) -> float:
+    """Raw trigger/quote price adjusted for slippage: buys pay more, sells get less."""
+    bps = (costs or {}).get("slippage_bps") or 0.0
+    if not bps:
+        return round(raw_price, 4)
+    factor = 1 + bps / 10_000.0 if side == "buy" else 1 - bps / 10_000.0
+    return round(raw_price * factor, 4)
+
+
+def _fill_fee(costs: dict) -> float:
+    """Flat fee charged on a fill (0.0 when costs are off)."""
+    return float((costs or {}).get("fee_per_trade_usd") or 0.0)
+
+
+def _order_notional(order: dict) -> float:
+    """Dollar value of an order: fill price if filled, else its reference price."""
+    price = (order.get("fill") or {}).get("price") or order.get("ref_price") or 0.0
+    return order["qty"] * price
+
+
+def check_spending_caps(state: dict, side: str, qty: float, price: float, now: datetime,
+                        max_order_usd=None, max_daily_usd=None) -> None:
+    """Raise PaperError if a BUY would breach the per-order or daily cap.
+
+    Sells are exempt: they return cash, they don't spend it. The daily
+    total is the notional of this calendar day's (New York) open and
+    filled buys; cancelled/expired/rejected orders don't count.
+    """
+    if side != "buy":
+        return
+    per_order, daily = spending_caps(max_order_usd, max_daily_usd)
+    notional = qty * price
+    if notional > per_order + _EPS:
+        raise PaperError(
+            f"Order value ${notional:,.2f} exceeds the ${per_order:,.2f} "
+            "per-order paper cap."
+        )
+    today = to_ny(now).date().isoformat()
+    spent = sum(
+        _order_notional(o)
+        for o in state["orders"]
+        if o["side"] == "buy"
+        and o["status"] in ("open", "filled")
+        and to_ny(_utc(o["ts"])).date().isoformat() == today
+    )
+    if spent + notional > daily + _EPS:
+        raise PaperError(
+            f"Daily paper spending would reach ${spent + notional:,.2f}, over the "
+            f"${daily:,.2f} daily cap (already spent ${spent:,.2f} today)."
+        )
 
 
 class PaperError(ValueError):
@@ -94,7 +276,7 @@ def in_session_hours(now: datetime) -> bool:
     return ny.weekday() < 5 and (9, 30) <= (ny.hour, ny.minute) < (16, 0)
 
 
-def is_market_open(now: datetime, last_bar_ts: Optional[int]) -> bool:
+def is_market_open(now: datetime, last_bar_ts: int | None) -> bool:
     """Session hours AND a fresh bar - no fresh bar means a holiday."""
     return (
         in_session_hours(now)
@@ -106,24 +288,31 @@ def is_market_open(now: datetime, last_bar_ts: Optional[int]) -> bool:
 # ---- ledger ----
 
 def ledger(state: dict) -> tuple[float, dict[str, list[float]], float]:
-    """(cash, {symbol: [qty, cost]}, realized P/L) from replaying filled orders."""
+    """(cash, {symbol: [qty, cost]}, realized P/L) from replaying filled orders.
+
+    Each fill also pays its recorded fee: buys pay qty*price + fee, sells
+    receive qty*price - fee. The fee is a cash cost, not part of the cost
+    basis, so avg cost stays the fill price and fees show up separately
+    in summary()["fees_paid"]. Old fills without a "fee" key count as 0.
+    """
     cash = float(state["account"]["start_cash"])
     pos: dict[str, list[float]] = {}
     realized = 0.0
     fills = sorted((o for o in state["orders"] if o["status"] == "filled"), key=lambda o: o["fill"]["ts"])
     for o in fills:
         qty, price = o["qty"], o["fill"]["price"]
+        fee = float((o["fill"] or {}).get("fee") or 0.0)
         p = pos.setdefault(o["symbol"], [0.0, 0.0])
         if o["side"] == "buy":
             p[0] += qty
             p[1] += qty * price
-            cash -= qty * price
+            cash -= qty * price + fee
         else:
             cost = p[1] * qty / p[0]
             p[0] -= qty
             p[1] -= cost
-            cash += qty * price
-            realized += qty * price - cost
+            cash += qty * price - fee
+            realized += qty * price - fee - cost
             if p[0] < _EPS:
                 del pos[o["symbol"]]
     return cash, pos, realized
@@ -144,7 +333,7 @@ def _reserved(state: dict) -> tuple[float, dict[str, float]]:
 
 # ---- account ----
 
-def new_state(start_cash, now: datetime) -> dict:
+def new_state(start_cash, now: datetime, costs: dict | None = None) -> dict:
     try:
         start_cash = float(start_cash)
     except (TypeError, ValueError):
@@ -154,14 +343,18 @@ def new_state(start_cash, now: datetime) -> dict:
     return {
         "version": 1,
         "account": {"id": uuid.uuid4().hex, "created": _iso(now), "start_cash": start_cash},
+        "costs": costs if costs is not None else paper_costs(),
         "orders": [],
         "archive": [],
     }
 
 
-def reset(state: Optional[dict], start_cash, now: datetime) -> dict:
+def reset(state: dict | None, start_cash, now: datetime) -> dict:
     fresh = new_state(start_cash, now)
     if state:
+        # A reset starts a fresh account but keeps the fee/slippage
+        # model: resetting shouldn't silently turn costs off.
+        fresh["costs"] = state.get("costs") or paper_costs()
         fresh["archive"] = state.get("archive", []) + [
             {"account": state["account"], "orders": state["orders"], "reset_at": _iso(now)}
         ]
@@ -170,7 +363,7 @@ def reset(state: Optional[dict], start_cash, now: datetime) -> dict:
 
 # ---- orders ----
 
-def _level(value, required: bool, name: str, otype: str) -> Optional[float]:
+def _level(value, required: bool, name: str, otype: str) -> float | None:
     if not required:
         if value is not None:
             raise PaperError(f"A {name} price is only for {name} orders.")
@@ -184,7 +377,7 @@ def _level(value, required: bool, name: str, otype: str) -> Optional[float]:
     return v
 
 
-def place_order(state: Optional[dict], prices, now: datetime, symbol: str, side: str, qty,
+def place_order(state: dict | None, prices, now: datetime, symbol: str, side: str, qty,
                 type: str = "market", limit=None, stop=None, tif: str = "day") -> tuple[dict, dict]:
     sym = (symbol or "").strip().upper()
     if not _SYMBOL_RE.match(sym):
@@ -215,10 +408,15 @@ def place_order(state: Optional[dict], prices, now: datetime, symbol: str, side:
         raise PaperError(f"{sym} is a {q.instrument_type.lower()}; paper trading covers US stocks and ETFs only.")
 
     state = state or new_state(DEFAULT_START_CASH, now)
+    costs = state.get("costs") or paper_costs()
     cash, pos, _ = ledger(state)
     held_cash, held_shares = _reserved(state)
     if side == "buy":
-        cost = qty * (limit or stop or q.price)
+        # Limit buys can never fill above the limit, so the cash check
+        # uses the limit as-is; market/stop fills pay slippage on the
+        # quote/trigger price, so those use the adjusted price.
+        est = limit if type == "limit" else _fill_price(side, stop or q.price, costs)
+        cost = qty * est + _fill_fee(costs)
         available = cash - held_cash
         if cost > available + _EPS:
             raise PaperError(f"Not enough cash: this needs ${cost:,.2f} and ${max(available, 0):,.2f} is available.")
@@ -234,7 +432,11 @@ def place_order(state: Optional[dict], prices, now: datetime, symbol: str, side:
     }
     if type == "market" and prices.market_open(now):
         order["status"] = "filled"
-        order["fill"] = {"ts": _iso(now), "price": round(q.price, 4)}
+        order["fill"] = {
+            "ts": _iso(now),
+            "price": _fill_price(side, q.price, costs),
+            "fee": _fill_fee(costs),
+        }
     state["orders"].append(order)
     return state, order
 
@@ -251,7 +453,7 @@ def cancel_order(state: dict, order_id: str, now: datetime) -> dict:
 
 # ---- settling ----
 
-def _trigger(order: dict, bar: Bar) -> Optional[float]:
+def _trigger(order: dict, bar: Bar) -> float | None:
     """Fill price if this bar triggers the order, else None. Gaps fill at the open."""
     otype, side = order["type"], order["side"]
     if otype == "market":
@@ -307,14 +509,24 @@ def settle(state: dict, prices, now: datetime) -> dict:
         if price is None:
             o.update(status="expired", reason=why, closed_at=_iso(when))
             continue
+        costs = state.get("costs") or paper_costs()
+        price = _fill_price(o["side"], price, costs)
+        if o["type"] == "limit":
+            # A limit is a hard cap: slippage applies to the market
+            # price you actually get, never above your limit (buys) or
+            # below it (sells). Stops have no cap - they execute at
+            # market once triggered.
+            level = o["limit"]
+            price = min(price, level) if o["side"] == "buy" else max(price, level)
+        fee = _fill_fee(costs)
         cash, pos, _ = ledger(state)
-        if o["side"] == "buy" and o["qty"] * price > cash + _EPS:
+        if o["side"] == "buy" and o["qty"] * price + fee > cash + _EPS:
             o.update(status="rejected", closed_at=_iso(when),
                      reason=f"Not enough cash when it triggered at ${price:,.2f}.")
         elif o["side"] == "sell" and o["qty"] > pos.get(o["symbol"], [0.0])[0] + _EPS:
             o.update(status="rejected", closed_at=_iso(when), reason="Not enough shares when it triggered.")
         else:
-            o.update(status="filled", fill={"ts": _iso(when), "price": round(price, 4)})
+            o.update(status="filled", fill={"ts": _iso(when), "price": round(price, 4), "fee": fee})
     return state
 
 
@@ -347,8 +559,14 @@ def summary(state: dict, prices, now: datetime) -> dict:
     start = state["account"]["start_cash"]
     equity = cash + value
     orders = state["orders"]
+    fees_paid = round(sum(
+        float((o["fill"] or {}).get("fee") or 0.0)
+        for o in orders if o["status"] == "filled"
+    ), 2)
     return {
         "account": state["account"],
+        "costs": state.get("costs") or paper_costs(),
+        "fees_paid": fees_paid,
         "cash": round(cash, 2),
         "positions": rows,
         "positions_value": round(value, 2),
@@ -396,10 +614,10 @@ def history(state: dict, prices, now: datetime) -> dict:
 class PaperStore:
     """paper.json under the Howlet cache dir. Atomic writes; a corrupt file is set aside, never overwritten."""
 
-    def __init__(self, cache_dir: Optional[Path] = None):
+    def __init__(self, cache_dir: Path | None = None):
         self.path = (Path(cache_dir) if cache_dir else default_cache_dir()) / "paper.json"
 
-    def load(self) -> Optional[dict]:
+    def load(self) -> dict | None:
         if not self.path.exists():
             return None
         try:
@@ -413,10 +631,32 @@ class PaperStore:
             return None
 
     def save(self, state: dict) -> None:
+        """Atomic write via a uniquely-named temp file + os.replace.
+
+        The temp name is unique per call (tempfile), so two threads in
+        one process can no longer pick the same pid-based name and
+        clobber each other. Callers must still hold locked() around the
+        read-settle-write cycle: the atomic rename alone doesn't stop a
+        concurrent load from seeing a stale state.
+        """
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_name(f"paper.json.{os.getpid()}.tmp")
-        tmp.write_text(json.dumps(state, indent=1), encoding="utf-8")
-        os.replace(tmp, self.path)
+        tmp_path = None
+        try:
+            # The temp file must be closed before os.replace (Windows
+            # can't rename an open file), so the replace happens after
+            # the `with` block, not inside it.
+            with tempfile.NamedTemporaryFile(
+                mode="w", encoding="utf-8", dir=self.path.parent,
+                prefix="paper.json.", suffix=".tmp", delete=False,
+            ) as tmp:
+                tmp_path = tmp.name
+                json.dump(state, tmp, indent=1)
+            os.replace(tmp_path, self.path)
+        except BaseException:
+            if tmp_path is not None:
+                with suppress(OSError):
+                    os.unlink(tmp_path)
+            raise
 
 
 # ---- prices ----
@@ -427,36 +667,37 @@ class MarketPrices:
     def __init__(self, market):
         self.market = market
 
-    def _get(self, symbol: str, range_: str, interval: str) -> Optional[Quote]:
+    def _get(self, symbol: str, range_: str, interval: str) -> Quote | None:
         try:
             return self.market.get_quote(symbol, range_=range_, interval=interval)
         except Exception:
             return None
 
-    def quote(self, symbol: str) -> Optional[Quote]:
+    def quote(self, symbol: str) -> Quote | None:
         return self._get(symbol, "5d", "1d")
 
     def market_open(self, now: datetime) -> bool:
         q = self._get("SPY", "1d", "5m")
         return is_market_open(now, q.history_ts[-1] if q and q.history_ts else None)
 
-    def bars(self, symbol: str, since: datetime, now: datetime) -> Optional[list[Bar]]:
+    def bars(self, symbol: str, since: datetime, now: datetime) -> list[Bar] | None:
         intraday = now - since < timedelta(days=INTRADAY_LOOKBACK_DAYS)
         q = self._get(symbol, "60d", "5m") if intraday else self._get(symbol, "6mo", "1d")
         if q is None or not q.history_ts:
             return None
-        out = [Bar(*b) for b in zip(q.history_ts, q.history_open, q.history_high, q.history_low)]
+        out = [Bar(*b) for b in zip(q.history_ts, q.history_open, q.history_high, q.history_low,
+                                     strict=False)]  # ragged chart arrays truncate; degrading beats raising
         if not intraday:  # a daily bar covers the whole day, so start the day after placement
             day = to_ny(since).date()
             out = [b for b in out if ny_from_unix(b.ts).date() > day]
         return out
 
-    def daily_closes(self, symbol: str, since: date, now: datetime) -> Optional[dict[str, float]]:
+    def daily_closes(self, symbol: str, since: date, now: datetime) -> dict[str, float] | None:
         age = (to_ny(now).date() - since).days
         range_ = next((r for r, lim in (("1mo", 28), ("3mo", 88), ("6mo", 180), ("1y", 360), ("2y", 720))
                        if age <= lim), "5y")
         q = self._get(symbol, range_, "1d")
         if q is None or not q.history_ts:
             return None
-        out = {ny_from_unix(t).date().isoformat(): c for t, c in zip(q.history_ts, q.sparkline)}
+        out = {ny_from_unix(t).date().isoformat(): c for t, c in zip(q.history_ts, q.sparkline, strict=False)}
         return {d: c for d, c in out.items() if d >= since.isoformat()}

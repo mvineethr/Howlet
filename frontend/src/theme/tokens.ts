@@ -14,15 +14,21 @@ export const SURFACES: { dark: Surface; light: Surface } = {
     hair: "#2d2d2d", border: "#3a3a3a", text: "#e6e6e6", dim: "#9a9a9a",
     up: "#6ccb5f", down: "#ff99a4", cyan: "#60cdff",
   },
+  // Calm paper-and-ink light theme, matching the Trading Research Space:
+  // warm off-white background, white panels, hairline warm-grey strokes,
+  // ink text. Dark surfaces are untouched.
   light: {
-    bg: "#f3f3f3", panel: "#fbfbfb", elev1: "#ffffff", elev2: "#f9f9f9",
-    hair: "#ebebeb", border: "#d1d1d1", text: "#1b1b1b", dim: "#616161",
+    bg: "#faf9f7", panel: "#ffffff", elev1: "#f4f2ef", elev2: "#eeebe6",
+    hair: "#e8e4dd", border: "#d8d3c8", text: "#1d1a16", dim: "#6f6a5f",
     up: "#0f7b0f", down: "#c42b1c", cyan: "#005fb8",
   },
 };
 
 // Accent choices offered in Settings (AMBER first = default).
 export const ACCENT_SWATCHES = [AMBER, "#60cdff", "#6ccb5f", "#ff99a4", "#c3a6ff"];
+
+// Calm card shadow: cards read as hairline-bordered paper, not lifted panels.
+export const CALM_SHADOW_4 = "0 1px 2px rgba(0,0,0,0.06), 0 0 1px rgba(0,0,0,0.08)";
 
 export const FONT_TEXT = '"Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
 export const FONT_MONO = '"Cascadia Mono", Consolas, monospace';

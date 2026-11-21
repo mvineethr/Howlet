@@ -95,7 +95,7 @@ def test_trigger_table(otype, side, level, b, expected):
 def test_market_buy_while_open_fills_at_quote():
     prices = FakePrices({"AAPL": q("AAPL", 200.0)}, open_=True)
     state, order = paper.place_order(account(), prices, FRI, "aapl", "buy", 10)
-    assert order["status"] == "filled" and order["fill"] == {"ts": paper._iso(FRI), "price": 200.0}
+    assert order["status"] == "filled" and order["fill"] == {"ts": paper._iso(FRI), "price": 200.0, "fee": 0.0}
     assert order["symbol"] == "AAPL" and order["ref_price"] == 200.0
     assert paper.ledger(state)[0] == pytest.approx(8_000.0)
 

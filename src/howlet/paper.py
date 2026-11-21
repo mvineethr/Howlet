@@ -183,8 +183,24 @@ def _fill_fee(costs: dict) -> float:
 
 
 def _order_notional(order: dict) -> float:
-    """Dollar value of an order: fill price if filled, else its reference price."""
-    price = (order.get("fill") or {}).get("price") or order.get("ref_price") or 0.0
+    """Dollar value of an order: fill price if filled, else the committed
+    level (limit/stop) for a pending order, else its reference price.
+
+    A pending limit/stop buy commits its level, not the quote at
+    placement: with the level above the quote, counting the reference
+    price understates daily spending and lets repeated orders breach
+    the daily cap. Matches _reserved(), which already holds cash at
+    the limit/stop level.
+    """
+    fill = order.get("fill") or {}
+    if fill.get("price") is not None:
+        price = fill["price"]
+    elif order.get("limit") is not None:
+        price = order["limit"]
+    elif order.get("stop") is not None:
+        price = order["stop"]
+    else:
+        price = order.get("ref_price") or 0.0
     return order["qty"] * price
 
 
@@ -206,12 +222,16 @@ def check_spending_caps(state: dict, side: str, qty: float, price: float, now: d
             "per-order paper cap."
         )
     today = to_ny(now).date().isoformat()
+    # Spending counts on the day it happens: a filled order on its fill
+    # date (a GTC order placed yesterday that fills today spends today),
+    # a still-open order on its placement date. _closed_at() is exactly
+    # that: fill timestamp for filled orders, order timestamp otherwise.
     spent = sum(
         _order_notional(o)
         for o in state["orders"]
         if o["side"] == "buy"
         and o["status"] in ("open", "filled")
-        and to_ny(_utc(o["ts"])).date().isoformat() == today
+        and to_ny(_utc(_closed_at(o))).date().isoformat() == today
     )
     if spent + notional > daily + _EPS:
         raise PaperError(
